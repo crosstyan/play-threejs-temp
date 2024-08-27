@@ -30,11 +30,14 @@ function App() {
   // https://discourse.threejs.org/t/rotate-gltf-model-with-mouse-move/49425/4
   // https://discourse.threejs.org/t/rotating-a-gltf-mesh-based-on-mouse-position-drops-the-fps-horribly/46990
   // @ts-expect-error type annotation from fiber doesn't like the PerspectiveCamera constructor
-  const camera: Camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000)
+  const camera: Camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight)
   camera.position.z = 8
   camera.position.y = 2
   camera.position.x = 2
 
+  // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
+  // https://github.com/pmndrs/drei/blob/master/src/core/TrackballControls.tsx
+  // https://github.com/pmndrs/three-stdlib/blob/0d281eaddc7487336793cfc866d97f6c9c824f20/src/controls/OrbitControls.ts#L29
   const Box = ()=>{
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
     let meshRef = useRef<MeshRef>(null)
