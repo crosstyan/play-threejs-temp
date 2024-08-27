@@ -1,11 +1,12 @@
 import { OrbitControls, TrackballControls, Grid } from '@react-three/drei'
-import { Camera, Canvas, useFrame, MeshProps } from '@react-three/fiber'
-import { PerspectiveCamera, OrthographicCamera } from "three"
-import "./App.css"
+import { Camera, Canvas, useFrame, MeshProps, useThree } from '@react-three/fiber'
+import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState } from 'react'
+import "./App.css"
 
+const skyBoxUrl = "/skybox1.png"
 const Ground = () => {
   const gridConfig = {
     cellSize: 0.5,
@@ -53,16 +54,29 @@ function App() {
     let meshRef = useRef<MeshRef>(null)
     const [isDown, setIsDown] = useState(false)
     const [downCoords, setDownCoords] = useState<Point2D>({ x: 0, y: 0 })
-    const [cameraRotX, setCameraRotX] = useState(0)
-    const [boxRotY, setBoxRotY] = useState(0)
+    const { scene, gl } = useThree()
+
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
-      // listen for the mouse up, down, and move events
+      const loader = new TextureLoader()
+      const texture = loader.load(
+        skyBoxUrl,
+        () => {
+          const rt = new WebGLCubeRenderTarget(texture.image.height)
+          // @ts-expect-error different threejs version
+          rt.fromEquirectangularTexture(gl, texture)
+          // @ts-expect-error different threejs version
+          scene.background = rt.texture as Texture
+        })
       window.addEventListener("mousedown", (ev) => {
+        /**
+         * @brief Normalize the point to be in the range of `[-1, 1]` from `[0, W]` and `[0, H]`,
+         *        use `(0, 0)` as the center
+         */
         const normalizePoint = (point: Point2D): Point2D => {
           const W = canvasRef.current!.width
           const H = canvasRef.current!.height
-          // use center of the canvas as the origin
+
           const cX = W / 2
           const cY = H / 2
           const x = (((point.x - cX) / W) + 0.25) * 4
@@ -78,36 +92,40 @@ function App() {
         window.removeEventListener("mouseup", () => setIsDown(false))
       }
     }, [])
+
     useFrame((state, delta) => {
       if (meshRef.current) {
         if (isDown) {
           const xDiff = state.pointer.x - downCoords.x
           const yDiff = state.pointer.y - downCoords.y
+          const yDeadZone = 0.125
           // should around [-PI/2, PI/2)
           const maxCameraRotX = Math.PI / 16
           const minCameraRotX = -Math.PI / 12
 
+          const boxRotY = meshRef.current.rotation.y
           const targetRotY = boxRotY + xDiff
           // @ts-expect-error dampE doesn't like Euler
           easing.dampE(meshRef.current.rotation, [0, targetRotY, 0], 0.1, delta)
-          setBoxRotY(meshRef.current.rotation.y)
 
-          if (props.camera) {
-            if (props.camera.rotation.x > maxCameraRotX){
+          if (props.camera && Math.abs(yDiff) > yDeadZone) {
+            if (props.camera.rotation.x > maxCameraRotX) {
               props.camera.rotation.x = maxCameraRotX
-            } else if (props.camera.rotation.x < minCameraRotX){
+            } else if (props.camera.rotation.x < minCameraRotX) {
               props.camera.rotation.x = minCameraRotX
             } else {
-              let targetRotX = props.camera.rotation.x + yDiff * 0.025
-              if (targetRotX > maxCameraRotX){
-                targetRotX = maxCameraRotX
-              } else if (targetRotX < minCameraRotX){
-                targetRotX = minCameraRotX
-              }
-              // @ts-expect-error dampE doesn't like Euler
+              const targetRotX = (() => {
+                const target = props.camera.rotation.x + yDiff * 0.025
+                if (target > maxCameraRotX) {
+                  return maxCameraRotX
+                } else if (target < minCameraRotX) {
+                  return minCameraRotX
+                }
+                return target
+              })()
+              // @ts-expect-error different threejs version
               easing.dampE(props.camera.rotation, [targetRotX, 0, 0], 0.1, delta)
             }
-            setCameraRotX(props.camera.rotation.x)
           }
         }
       }
