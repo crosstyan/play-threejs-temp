@@ -35,8 +35,14 @@ function App() {
   camera.position.y = 2
   camera.position.x = 2
 
-  interface BoxProps{
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  interface BoxProps {
     camera?: Camera
+  }
+  interface Point2D {
+    x: number
+    y: number
   }
 
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
@@ -46,10 +52,26 @@ function App() {
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
     let meshRef = useRef<MeshRef>(null)
     const [isDown, setIsDown] = useState(false)
+    const [downCoords, setDownCoords] = useState<Point2D>({ x: 0, y: 0 })
+    const [cameraRotX, setCameraRotX] = useState(0)
+    const [boxRotY, setBoxRotY] = useState(0)
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
       // listen for the mouse up, down, and move events
-      window.addEventListener("mousedown", () => setIsDown(true))
+      window.addEventListener("mousedown", (ev) => {
+        const normalizePoint = (point: Point2D): Point2D => {
+          const W = canvasRef.current!.width
+          const H = canvasRef.current!.height
+          // use center of the canvas as the origin
+          const cX = W / 2
+          const cY = H / 2
+          const x = (((point.x - cX) / W) + 0.25) * 4
+          const y = (((point.y - cY) / H) + 0.25) * -4
+          return { x, y }
+        }
+        setIsDown(true)
+        setDownCoords(normalizePoint({ x: ev.clientX, y: ev.clientY }))
+      })
       window.addEventListener("mouseup", () => setIsDown(false))
       return () => {
         window.removeEventListener("mousedown", () => setIsDown(true))
@@ -58,12 +80,34 @@ function App() {
     }, [])
     useFrame((state, delta) => {
       if (meshRef.current) {
-        if (isDown){
+        if (isDown) {
+          const xDiff = state.pointer.x - downCoords.x
+          const yDiff = state.pointer.y - downCoords.y
+          // should around [-PI/2, PI/2)
+          const maxCameraRotX = Math.PI / 16
+          const minCameraRotX = -Math.PI / 12
+
+          const targetRotY = boxRotY + xDiff
           // @ts-expect-error dampE doesn't like Euler
-          easing.dampE(meshRef.current.rotation, [0, -Math.PI * state.pointer.x, 0], 0.1, delta)
-          if (props.camera){
+          easing.dampE(meshRef.current.rotation, [0, targetRotY, 0], 0.1, delta)
+          setBoxRotY(meshRef.current.rotation.y)
+
+          if (props.camera) {
+            if (props.camera.rotation.x > maxCameraRotX){
+              props.camera.rotation.x = maxCameraRotX
+            } else if (props.camera.rotation.x < minCameraRotX){
+              props.camera.rotation.x = minCameraRotX
+            } else {
+              let targetRotX = props.camera.rotation.x + yDiff * 0.025
+              if (targetRotX > maxCameraRotX){
+                targetRotX = maxCameraRotX
+              } else if (targetRotX < minCameraRotX){
+                targetRotX = minCameraRotX
+              }
               // @ts-expect-error dampE doesn't like Euler
-              easing.dampE(props.camera.rotation, [-Math.PI * state.pointer.y * 0.08, 0, 0], 0.1, delta)
+              easing.dampE(props.camera.rotation, [targetRotX, 0, 0], 0.1, delta)
+            }
+            setCameraRotX(props.camera.rotation.x)
           }
         }
       }
@@ -79,7 +123,7 @@ function App() {
 
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
-      <Canvas style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
+      <Canvas ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
         <ambientLight />
         <directionalLight position={[10, 6, 5]} intensity={5} />
         <Box camera={camera} />
