@@ -1,9 +1,9 @@
-import { OrbitControls, TrackballControls, Grid } from '@react-three/drei'
+import { OrbitControls, TrackballControls, Grid, AccumulativeShadows, RandomizedLight } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree } from '@react-three/fiber'
 import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
-import { forwardRef, useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useRef, useState, memo } from 'react'
 import "./App.css"
 
 const skyBoxUrl = "/skybox1.png"
@@ -22,6 +22,12 @@ const Ground = () => {
   }
   return <Grid position={[0, -0.01, 0]} args={[10.5, 10.5]} {...gridConfig} />
 }
+
+const Shadows = memo(() => (
+  <AccumulativeShadows temporal frames={30} color="#9d4b4b" colorBlend={0.5} alphaTest={0.9} scale={20}>
+    <RandomizedLight amount={8} radius={4} position={[5, 5, -10]} />
+  </AccumulativeShadows>
+))
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
 
@@ -132,7 +138,7 @@ function App() {
     })
     const color = isDown ? "#0ac" : "#ca0"
     return (
-      <mesh ref={meshRef} position={[0, 2.5 / 2, 0]}>
+      <mesh ref={meshRef} castShadow receiveShadow position={[0, 2.5 / 2, 0]}>
         <boxGeometry args={[2.5, 2.5, 2.5]} />
         <meshStandardMaterial color={color} />
       </mesh>
@@ -141,11 +147,12 @@ function App() {
 
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
-      <Canvas ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
+      <Canvas shadows ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
         <ambientLight />
         <directionalLight position={[10, 6, 5]} intensity={5} />
         <Box camera={camera} />
         <Ground />
+        <Shadows />
       </Canvas>
     </div>
   )
