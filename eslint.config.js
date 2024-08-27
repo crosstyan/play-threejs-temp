@@ -23,6 +23,7 @@ export default tseslint.config(
         'warn',
         { allowConstantExport: true },
       ],
+      "eslint-comments/no-unused-disable": "warn",
     },
   },
 )
