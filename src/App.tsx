@@ -15,19 +15,13 @@ const Ground = () => {
     sectionSize: 3,
     sectionThickness: 1,
     sectionColor: '#9d4b4b',
-    fadeDistance: 30,
+    fadeDistance: 15,
     fadeStrength: 1,
     followCamera: false,
     infiniteGrid: true
   }
-  return <Grid position={[0, -0.01, 0]} args={[10.5, 10.5]} {...gridConfig} />
+  return <Grid position={[0, 0, 0]} args={[10.5, 10.5]} {...gridConfig} />
 }
-
-const Shadows = memo(() => (
-  <AccumulativeShadows temporal frames={30} color="#9d4b4b" colorBlend={0.5} alphaTest={0.9} scale={20}>
-    <RandomizedLight amount={8} radius={4} position={[5, 5, -10]} />
-  </AccumulativeShadows>
-))
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
 
@@ -37,10 +31,12 @@ function App() {
   // https://discourse.threejs.org/t/rotate-gltf-model-with-mouse-move/49425/4
   // https://discourse.threejs.org/t/rotating-a-gltf-mesh-based-on-mouse-position-drops-the-fps-horribly/46990
   // @ts-expect-error type annotation from fiber doesn't like the PerspectiveCamera constructor
-  const camera: Camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight)
-  camera.position.z = 7
-  camera.position.y = 2
-  camera.position.x = 2
+  const camera: Camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100)
+  camera.position.z = 8
+  camera.position.y = 3
+  camera.position.x = 2.5
+  const cameraInitRotY = 0
+  camera.rotation.y = cameraInitRotY
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -53,8 +49,7 @@ function App() {
   }
 
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
-  // https://github.com/pmndrs/drei/blob/master/src/core/TrackballControls.tsx
-  // https://github.com/pmndrs/three-stdlib/blob/0d281eaddc7487336793cfc866d97f6c9c824f20/src/controls/OrbitControls.ts#L29
+  // https://github.com/pmndrs/three-stdlib/blob/main/src/controls/OrbitControls.ts
   const Box = (props: BoxProps) => {
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
     let meshRef = useRef<MeshRef>(null)
@@ -106,7 +101,7 @@ function App() {
           const yDiff = state.pointer.y - downCoords.y
           const yDeadZone = 0.125
           // should around [-PI/2, PI/2)
-          const maxCameraRotX = Math.PI / 16
+          const maxCameraRotX = 0
           const minCameraRotX = -Math.PI / 12
 
           const boxRotY = meshRef.current.rotation.y
@@ -130,7 +125,7 @@ function App() {
                 return target
               })()
               // @ts-expect-error different threejs version
-              easing.dampE(props.camera.rotation, [targetRotX, 0, 0], 0.1, delta)
+              easing.dampE(props.camera.rotation, [targetRotX, cameraInitRotY, 0], 0.1, delta)
             }
           }
         }
@@ -138,21 +133,31 @@ function App() {
     })
     const color = isDown ? "#0ac" : "#ca0"
     return (
-      <mesh ref={meshRef} castShadow receiveShadow position={[0, 2.5 / 2, 0]}>
+      <mesh ref={meshRef} castShadow position={[0, 2.5 / 2, 0]}>
         <boxGeometry args={[2.5, 2.5, 2.5]} />
         <meshStandardMaterial color={color} />
       </mesh>
     )
   }
 
+  function Floor() {
+    return (
+      <mesh rotation-x={-Math.PI / 2} position-y={-0.01} receiveShadow>
+        <circleGeometry args={[10]} />
+        <meshStandardMaterial />
+      </mesh>
+    )
+  }
+
+  // https://sbcode.net/react-three-fiber/shadows/
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <Canvas shadows ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
-        <ambientLight />
-        <directionalLight position={[10, 6, 5]} intensity={5} />
+        <ambientLight intensity={0.5} />
+        <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
         <Box camera={camera} />
         <Ground />
-        <Shadows />
+        <Floor />
       </Canvas>
     </div>
   )
