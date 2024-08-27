@@ -4,7 +4,7 @@ import { PerspectiveCamera, OrthographicCamera } from "three"
 import "./App.css"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
-import { forwardRef, useRef } from 'react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
 
 const Ground = () => {
   const gridConfig = {
@@ -41,16 +41,22 @@ function App() {
   const Box = ()=>{
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
     let meshRef = useRef<MeshRef>(null)
+    const [isDown, setIsDown] = useState(false)
+    useEffect(() => {
+      // listen for the mouse up, down, and move events
+      
+    })
     useFrame((state, delta) => {
       if (meshRef.current) {
         // @ts-expect-error dampE doesn't like Euler
         easing.dampE(meshRef.current.rotation, [0, -Math.PI * state.pointer.x, 0], 0.1, delta)
       }
     })
+    const color = isDown ? "#0ac" : "#ca0"
     return (
-        <mesh ref={meshRef} position={[0, 2.5 / 2, 0]}>
+        <mesh ref={meshRef} position={[0, 2.5 / 2, 0]} onPointerDown={() => setIsDown(true)} onPointerUp={() => setIsDown(false)}>
           <boxGeometry args={[2.5, 2.5, 2.5]} />
-          <meshStandardMaterial color="#ca0" />
+          <meshStandardMaterial color={color} />
         </mesh>
     )
   }
