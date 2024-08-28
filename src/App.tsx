@@ -1,9 +1,9 @@
 import { OrbitControls, TrackballControls, Grid, AccumulativeShadows, RandomizedLight, useBVH, useGLTF } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
-import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper } from "three"
+import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
-import { forwardRef, useEffect, useRef, useState, memo } from 'react'
+import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
 import "./App.css"
 
 const skyBoxUrl = "/skybox1.png"
@@ -22,7 +22,7 @@ const Ground = () => {
     followCamera: false,
     infiniteGrid: true
   }
-  return <Grid position={[0, 0, 0]} args={[10.5, 10.5]} {...gridConfig} />
+  return <Grid position-y={-0.01} args={[10.5, 10.5]} {...gridConfig} />
 }
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
@@ -59,19 +59,41 @@ function App() {
     const [downCoords, setDownCoords] = useState<Point2D>({ x: 0, y: 0 })
     const { scene: globalScene, gl, pointer } = useThree()
     // https://r3f.docs.pmnd.rs/tutorials/loading-models
-    const { nodes, scene, materials } = useGLTF(glbfUrl)
+    const { nodes, scene, materials, animations } = useGLTF(glbfUrl)
     const [helper, setHelper] = useState<SkeletonHelper | null>(null)
+    const [mixer, setMixer] = useState<AnimationMixer | null>(null)
     // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
+    // https://codesandbox.io/p/sandbox/r3f-animation-mixer-8rsdt?
 
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
       const model = scene.children[0]
-      if (model && !helper) {
-        // @ts-expect-error fiber
-        const h = new SkeletonHelper(model)
-        setHelper(h)
+      if (model) {
+        model.traverse((o) => {
+          // @ts-expect-error fiber
+          if (o.isMesh) {
+            o.castShadow = true
+          }
+        })
+        if (!helper) {
+          // @ts-expect-error fiber
+          const h = new SkeletonHelper(model)
+          setHelper(h)
+        }
       }
-      console.log(nodes)
+      if (!mixer) {
+        // @ts-expect-error fiber
+        const m = new AnimationMixer(scene)
+        // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
+        setMixer(m)
+        for (const clip of animations) {
+          const subclip = AnimationUtils.subclip(clip, clip.uuid, 3, 300, 30)
+          let action = m.clipAction(subclip)
+          action.timeScale = 1.25
+          action.play()
+        }
+      }
+
       if (isUseSkyBox) {
         const loader = new TextureLoader()
         const texture = loader.load(
@@ -98,6 +120,9 @@ function App() {
     }, [])
 
     useFrame((state, delta) => {
+      if (mixer) {
+        mixer.update(delta)
+      }
       if (meshRef.current) {
         if (isDown) {
           const xDiff = state.pointer.x - downCoords.x
@@ -141,7 +166,7 @@ function App() {
     const Helper = () => helper ? <primitive object={helper} /> : null
     return (
       <>
-        <mesh ref={meshRef} castShadow position={[0, 0, 0]} scale={2.5}>
+        <mesh ref={meshRef} position={[0, -0.05, 0]} scale={2.5}>
           <Payload />
         </mesh>
         <Helper />
@@ -151,7 +176,7 @@ function App() {
 
   function Floor() {
     return (
-      <mesh rotation-x={-Math.PI / 2} position-y={-0.01} receiveShadow>
+      <mesh rotation-x={-Math.PI / 2} position-y={-0.05} receiveShadow>
         <planeGeometry args={[1000, 10]} />
         <meshStandardMaterial />
       </mesh>
@@ -162,9 +187,11 @@ function App() {
   return (
     <div style={{ display: "flex", justifyContent: "center" }}>
       <Canvas shadows ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
-        <ambientLight intensity={0.5} />
+        <ambientLight intensity={0.25} />
         <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
-        <Box camera={camera} />
+        <Suspense fallback={null}>
+          <Box camera={camera} />
+        </Suspense>
         <Ground />
         <Floor />
       </Canvas>
