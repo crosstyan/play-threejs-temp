@@ -1,6 +1,6 @@
 import { OrbitControls, TrackballControls, Grid, AccumulativeShadows, RandomizedLight, useBVH, useGLTF } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
-import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils } from "three"
+import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
@@ -69,9 +69,9 @@ function App() {
     useEffect(() => {
       const model = scene.children[0]
       if (model) {
+        // https://discourse.threejs.org/t/gltf-scene-traverse-property-ismesh-does-not-exist-on-type-object3d/27212/2
         model.traverse((o) => {
-          // @ts-expect-error fiber
-          if (o.isMesh) {
+          if (o instanceof Mesh && o.isMesh) {
             o.castShadow = true
           }
         })
