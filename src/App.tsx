@@ -1,12 +1,14 @@
-import { OrbitControls, TrackballControls, Grid, AccumulativeShadows, RandomizedLight } from '@react-three/drei'
-import { Camera, Canvas, useFrame, MeshProps, useThree } from '@react-three/fiber'
-import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture } from "three"
+import { OrbitControls, TrackballControls, Grid, AccumulativeShadows, RandomizedLight, useBVH, useGLTF } from '@react-three/drei'
+import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
+import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo } from 'react'
 import "./App.css"
 
 const skyBoxUrl = "/skybox1.png"
+const glbfUrl = "/so.glb"
+const isUseSkyBox = false
 const Ground = () => {
   const gridConfig = {
     cellSize: 0.5,
@@ -15,8 +17,8 @@ const Ground = () => {
     sectionSize: 3,
     sectionThickness: 1,
     sectionColor: '#9d4b4b',
-    fadeDistance: 15,
-    fadeStrength: 1,
+    fadeDistance: 12,
+    fadeStrength: 0.5,
     followCamera: false,
     infiniteGrid: true
   }
@@ -55,37 +57,38 @@ function App() {
     let meshRef = useRef<MeshRef>(null)
     const [isDown, setIsDown] = useState(false)
     const [downCoords, setDownCoords] = useState<Point2D>({ x: 0, y: 0 })
-    const { scene, gl } = useThree()
+    const { scene: globalScene, gl, pointer } = useThree()
+    // https://r3f.docs.pmnd.rs/tutorials/loading-models
+    const { nodes, scene, materials } = useGLTF(glbfUrl)
+    const [helper, setHelper] = useState<SkeletonHelper | null>(null)
+    // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
 
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
-      const loader = new TextureLoader()
-      const texture = loader.load(
-        skyBoxUrl,
-        () => {
-          const rt = new WebGLCubeRenderTarget(texture.image.height)
-          // @ts-expect-error different threejs version
-          rt.fromEquirectangularTexture(gl, texture)
-          // @ts-expect-error different threejs version
-          scene.background = rt.texture as Texture
-        })
-      window.addEventListener("mousedown", (ev) => {
-        /**
-         * @brief Normalize the point to be in the range of `[-1, 1]` from `[0, W]` and `[0, H]`,
-         *        use `(0, 0)` as the center
-         */
-        const normalizePoint = (point: Point2D): Point2D => {
-          const W = canvasRef.current!.width
-          const H = canvasRef.current!.height
-
-          const cX = W / 2
-          const cY = H / 2
-          const x = (((point.x - cX) / W) + 0.25) * 4
-          const y = (((point.y - cY) / H) + 0.25) * -4
-          return { x, y }
-        }
+      const model = scene.children[0]
+      if (model && !helper) {
+        // @ts-expect-error fiber
+        const h = new SkeletonHelper(model)
+        setHelper(h)
+      }
+      console.log(nodes)
+      if (isUseSkyBox) {
+        const loader = new TextureLoader()
+        const texture = loader.load(
+          skyBoxUrl,
+          () => {
+            const rt = new WebGLCubeRenderTarget(texture.image.height)
+            // @ts-expect-error different threejs version
+            rt.fromEquirectangularTexture(gl, texture)
+            // @ts-expect-error different threejs version
+            globalScene.background = rt.texture as Texture
+          })
+      }
+      window.addEventListener("mousedown", (_ev) => {
         setIsDown(true)
-        setDownCoords(normalizePoint({ x: ev.clientX, y: ev.clientY }))
+        const x = pointer.x
+        const y = pointer.y
+        setDownCoords({ x, y })
       })
       window.addEventListener("mouseup", () => setIsDown(false))
       return () => {
@@ -131,19 +134,25 @@ function App() {
         }
       }
     })
+    // https://lisyarus.github.io/blog/posts/gltf-animation.html
     const color = isDown ? "#0ac" : "#ca0"
+    // https://threejs.org/docs/#api/en/helpers/SkeletonHelper
+    const Payload = () => <primitive object={scene} children-0-castShadow />
+    const Helper = () => helper ? <primitive object={helper} /> : null
     return (
-      <mesh ref={meshRef} castShadow position={[0, 2.5 / 2, 0]}>
-        <boxGeometry args={[2.5, 2.5, 2.5]} />
-        <meshStandardMaterial color={color} />
-      </mesh>
+      <>
+        <mesh ref={meshRef} castShadow position={[0, 0, 0]} scale={2.5}>
+          <Payload />
+        </mesh>
+        <Helper />
+      </>
     )
   }
 
   function Floor() {
     return (
       <mesh rotation-x={-Math.PI / 2} position-y={-0.01} receiveShadow>
-        <circleGeometry args={[10]} />
+        <planeGeometry args={[1000, 10]} />
         <meshStandardMaterial />
       </mesh>
     )
