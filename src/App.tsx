@@ -1,9 +1,10 @@
 import { Grid, useBVH, useGLTF, CameraControls } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
-import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh, Material, MeshStandardMaterial } from "three"
+import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh, Material, MeshStandardMaterial, MathUtils } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
+import { useControls, button, buttonGroup, folder } from 'leva'
 import "./App.css"
 
 const skyBoxUrl = "/skybox1.png"
@@ -18,39 +19,50 @@ const Ground = () => {
     sectionSize: 3,
     sectionThickness: 1,
     sectionColor: '#9d4b4b',
-    fadeDistance: 12,
+    fadeDistance: 18,
     fadeStrength: 0.5,
     followCamera: false,
     infiniteGrid: true
   }
   return <Grid position-y={-0.01} args={[10.5, 10.5]} {...gridConfig} />
 }
+const { DEG2RAD } = MathUtils
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
 
-interface SceneProps {
-  camera: Camera
-}
-
-const Scene = (props: SceneProps) => {
+const Scene = () => {
   // https://codesandbox.io/p/sandbox/cameracontrols-basic-sew669
   // https://sbcode.net/react-three-fiber/camera/
   // https://discourse.threejs.org/t/rotate-gltf-model-with-mouse-move/49425/4
   // https://discourse.threejs.org/t/rotating-a-gltf-mesh-based-on-mouse-position-drops-the-fps-horribly/46990
-  const camera = props.camera
 
-  interface BoxProps {
-    camera?: Camera
-  }
+  const { camera } = useThree()
+  useControls("Camera", {
+    phiGrp: buttonGroup({
+      label: 'rotate phi',
+      opts: {
+        // '+20º': () => cameraControlsRef.current?.rotate(0, 20 * DEG2RAD, true),
+        // '-40º': () => cameraControlsRef.current?.rotate(0, -40 * DEG2RAD, true)
+      }
+    }),
+  })
 
   interface Point2D {
     x: number
     y: number
   }
 
+  // https://drei.pmnd.rs/?path=/docs/controls-cameracontrols--docs
+  useEffect(() => {
+    // @ts-expect-error must be PerspectiveCamera
+    (camera as PerspectiveCamera).setFocalLength(35)
+    camera.position.set(2.5, 3, 12)
+    camera.rotation.y = cameraInitRotY
+  }, [])
+
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
   // https://github.com/pmndrs/three-stdlib/blob/main/src/controls/OrbitControls.ts
-  const Box = (props: BoxProps) => {
+  const Box = () => {
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
     const meshRef = useRef<MeshRef>(null)
     const [isDown, setIsDown] = useState(false)
@@ -62,6 +74,7 @@ const Scene = (props: SceneProps) => {
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
     // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
     // https://codesandbox.io/p/sandbox/r3f-animation-mixer-8rsdt?
+    const { camera } = useThree()
 
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
@@ -151,14 +164,14 @@ const Scene = (props: SceneProps) => {
           // @ts-expect-error dampE doesn't like Euler
           easing.dampE(meshRef.current.rotation, [0, targetRotY, 0], 0.1, delta)
 
-          if (props.camera && Math.abs(yDiff) > yDeadZone) {
-            if (props.camera.rotation.x > maxCameraRotX) {
-              props.camera.rotation.x = maxCameraRotX
-            } else if (props.camera.rotation.x < minCameraRotX) {
-              props.camera.rotation.x = minCameraRotX
+          if (camera && Math.abs(yDiff) > yDeadZone) {
+            if (camera.rotation.x > maxCameraRotX) {
+              camera.rotation.x = maxCameraRotX
+            } else if (camera.rotation.x < minCameraRotX) {
+              camera.rotation.x = minCameraRotX
             } else {
               const targetRotX = (() => {
-                const target = props.camera.rotation.x + yDiff * 0.025
+                const target = camera.rotation.x + yDiff * 0.025
                 if (target > maxCameraRotX) {
                   return maxCameraRotX
                 } else if (target < minCameraRotX) {
@@ -167,7 +180,7 @@ const Scene = (props: SceneProps) => {
                 return target
               })()
               // @ts-expect-error different threejs version
-              easing.dampE(props.camera.rotation, [targetRotX, camera.rotation.y, camera.rotation.z], 0.1, delta)
+              easing.dampE(camera.rotation, [targetRotX, camera.rotation.y, camera.rotation.z], 0.1, delta)
             }
           }
         }
@@ -203,7 +216,7 @@ const Scene = (props: SceneProps) => {
       <ambientLight intensity={0.25} />
       <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
       <Suspense fallback={null}>
-        <Box camera={camera} />
+        <Box />
       </Suspense>
       <Ground />
       <Floor />
@@ -212,15 +225,9 @@ const Scene = (props: SceneProps) => {
 }
 
 function App() {
-  // @ts-expect-error type annotation from fiber doesn't like the PerspectiveCamera constructor
-  const camera: Camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100)
-  camera.position.z = 8
-  camera.position.y = 3
-  camera.position.x = 2.5
-  camera.rotation.y = cameraInitRotY
   return (
-    <Canvas shadows style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
-      <Scene camera={camera} />
+    <Canvas shadows style={{ background: "#eee", width: "100vw", height: "100vh" }}>
+      <Scene />
     </Canvas>
   )
 }
