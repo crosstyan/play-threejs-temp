@@ -1,4 +1,4 @@
-import { OrbitControls, TrackballControls, Grid, AccumulativeShadows, RandomizedLight, useBVH, useGLTF } from '@react-three/drei'
+import { Grid, useBVH, useGLTF, CameraControls } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
 import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh, Material, MeshStandardMaterial } from "three"
 import { suspend } from "suspend-react"
@@ -9,6 +9,7 @@ import "./App.css"
 const skyBoxUrl = "/skybox1.png"
 const glbfUrl = "/so.glb"
 const isUseSkyBox = false
+const cameraInitRotY = 0
 const Ground = () => {
   const gridConfig = {
     cellSize: 0.5,
@@ -27,24 +28,21 @@ const Ground = () => {
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
 
-function App() {
+interface SceneProps {
+  camera: Camera
+}
+
+const Scene = (props: SceneProps) => {
   // https://codesandbox.io/p/sandbox/cameracontrols-basic-sew669
   // https://sbcode.net/react-three-fiber/camera/
   // https://discourse.threejs.org/t/rotate-gltf-model-with-mouse-move/49425/4
   // https://discourse.threejs.org/t/rotating-a-gltf-mesh-based-on-mouse-position-drops-the-fps-horribly/46990
-  // @ts-expect-error type annotation from fiber doesn't like the PerspectiveCamera constructor
-  const camera: Camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100)
-  camera.position.z = 8
-  camera.position.y = 3
-  camera.position.x = 2.5
-  const cameraInitRotY = 0
-  camera.rotation.y = cameraInitRotY
-
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const camera = props.camera
 
   interface BoxProps {
     camera?: Camera
   }
+
   interface Point2D {
     x: number
     y: number
@@ -169,7 +167,7 @@ function App() {
                 return target
               })()
               // @ts-expect-error different threejs version
-              easing.dampE(props.camera.rotation, [targetRotX, cameraInitRotY, 0], 0.1, delta)
+              easing.dampE(props.camera.rotation, [targetRotX, camera.rotation.y, camera.rotation.z], 0.1, delta)
             }
           }
         }
@@ -201,7 +199,7 @@ function App() {
 
   // https://sbcode.net/react-three-fiber/shadows/
   return (
-    <Canvas shadows ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
+    <>
       <ambientLight intensity={0.25} />
       <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
       <Suspense fallback={null}>
@@ -209,6 +207,20 @@ function App() {
       </Suspense>
       <Ground />
       <Floor />
+    </>
+  )
+}
+
+function App() {
+  // @ts-expect-error type annotation from fiber doesn't like the PerspectiveCamera constructor
+  const camera: Camera = new PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100)
+  camera.position.z = 8
+  camera.position.y = 3
+  camera.position.x = 2.5
+  camera.rotation.y = cameraInitRotY
+  return (
+    <Canvas shadows style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
+      <Scene camera={camera} />
     </Canvas>
   )
 }
