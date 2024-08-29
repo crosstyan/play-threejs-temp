@@ -5,7 +5,9 @@ import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
 import { useControls, button, buttonGroup, folder } from 'leva'
+import { MouseButtons, ACTION } from './wrapper'
 import "./App.css"
+
 
 const skyBoxUrl = "/skybox1.png"
 const glbfUrl = "/so.glb"
@@ -19,7 +21,7 @@ const Ground = () => {
     sectionSize: 3,
     sectionThickness: 1,
     sectionColor: '#9d4b4b',
-    fadeDistance: 18,
+    fadeDistance: 20,
     fadeStrength: 0.5,
     followCamera: false,
     infiniteGrid: true
@@ -37,18 +39,36 @@ const Scene = () => {
   // https://discourse.threejs.org/t/rotating-a-gltf-mesh-based-on-mouse-position-drops-the-fps-horribly/46990
 
   const { camera } = useThree()
+  const cameraControlsRef = useRef<CameraControls>(null)
   useControls("Camera", {
     phiGrp: buttonGroup({
       label: 'rotate theta',
       opts: {
-        '+45º': () => {
-          // @ts-expect-error version
-          easing.dampE(camera.rotation, [camera.rotation.x, camera.rotation.y + 45, camera.rotation.z], 1)
-        },
-        '-45º': () => {
-          // @ts-expect-error version
-          easing.dampE(camera.rotation, [camera.rotation.x, camera.rotation.y - 45, camera.rotation.z], 1)
-        }
+        "+45º": () => cameraControlsRef.current?.rotate(45 * DEG2RAD, 0, true),
+        "-45º": () => cameraControlsRef.current?.rotate(-45 * DEG2RAD, 0, true)
+      }
+    }),
+    zoomGrp: buttonGroup({
+      label: 'zoom',
+      opts: {
+        '/2': () => cameraControlsRef.current?.zoom(camera.zoom / 2, true),
+        '/-2': () => cameraControlsRef.current?.zoom(-camera.zoom / 2, true)
+      }
+    }),
+    dollyGrp: buttonGroup({
+      label: 'dolly',
+      opts: {
+        '1': () => cameraControlsRef.current?.dolly(1, true),
+        '-1': () => cameraControlsRef.current?.dolly(-1, true)
+      }
+    }),
+    truckGrp: buttonGroup({
+      label: 'truck',
+      opts: {
+        "x1": () => cameraControlsRef.current?.truck(1, 0, true),
+        "-x1": () => cameraControlsRef.current?.truck(-1, 0, true),
+        "y1": () => cameraControlsRef.current?.truck(0, 1, true),
+        "-y1": () => cameraControlsRef.current?.truck(0, -1, true),
       }
     }),
   })
@@ -62,8 +82,18 @@ const Scene = () => {
   useEffect(() => {
     // @ts-expect-error must be PerspectiveCamera
     (camera as PerspectiveCamera).setFocalLength(35)
-    camera.position.set(2.5, 3, 12)
-    camera.rotation.y = cameraInitRotY
+    camera.position.z = 8
+    camera.position.y = 3
+    camera.position.x = 2.5
+    if (cameraControlsRef.current) {
+      cameraControlsRef.current.dolly(-8)
+      cameraControlsRef.current.truck(2.5, -3)
+      cameraControlsRef.current.minPolarAngle = 0 + Math.PI / 4
+      cameraControlsRef.current.maxPolarAngle = Math.PI / 2
+    }
+    return () => {
+      cameraControlsRef.current?.reset()
+    }
   }, [])
 
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
@@ -171,23 +201,22 @@ const Scene = () => {
           easing.dampE(meshRef.current.rotation, [0, targetRotY, 0], 0.1, delta)
 
           if (camera && Math.abs(yDiff) > yDeadZone) {
-            if (camera.rotation.x > maxCameraRotX) {
-              camera.rotation.x = maxCameraRotX
-            } else if (camera.rotation.x < minCameraRotX) {
-              camera.rotation.x = minCameraRotX
-            } else {
-              const targetRotX = (() => {
-                const target = camera.rotation.x + yDiff * 0.025
-                if (target > maxCameraRotX) {
-                  return maxCameraRotX
-                } else if (target < minCameraRotX) {
-                  return minCameraRotX
-                }
-                return target
-              })()
-              // @ts-expect-error different threejs version
-              easing.dampE(camera.rotation, [targetRotX, camera.rotation.y, camera.rotation.z], 0.1, delta)
-            }
+            // if (camera.rotation.x > maxCameraRotX) {
+            //   camera.rotation.x = maxCameraRotX
+            // } else if (camera.rotation.x < minCameraRotX) {
+            //   camera.rotation.x = minCameraRotX
+            // } else {
+            //   const targetRotX = (() => {
+            //     const target = yDiff
+            //     // if (target > maxCameraRotX) {
+            //     //   return maxCameraRotX
+            //     // } else if (target < minCameraRotX) {
+            //     //   return minCameraRotX
+            //     // }
+            //     return target
+            //   })()
+            // }
+            cameraControlsRef.current?.rotate(0, yDiff * DEG2RAD, false)
           }
         }
       }
@@ -210,11 +239,18 @@ const Scene = () => {
   function Floor() {
     return (
       <mesh rotation-x={-Math.PI / 2} position-y={-0.05} receiveShadow>
-        <planeGeometry args={[1000, 10]} />
+        <planeGeometry args={[1000, 15]} />
         <meshStandardMaterial />
       </mesh>
     )
   }
+
+  const mouseButton = {
+    left: ACTION.NONE,
+    middle: ACTION.NONE,
+    right: ACTION.NONE,
+    wheel: ACTION.NONE,
+  } as const
 
   // https://sbcode.net/react-three-fiber/shadows/
   return (
@@ -226,13 +262,15 @@ const Scene = () => {
       </Suspense>
       <Ground />
       <Floor />
+      <CameraControls ref={cameraControlsRef} mouseButtons={mouseButton} />
     </>
   )
 }
 
+// make floor background the same color as the grid
 function App() {
   return (
-    <Canvas shadows style={{ background: "#eee", width: "100vw", height: "100vh" }}>
+    <Canvas shadows style={{ background: "#e9e9e9", width: "100vw", height: "100vh" }}>
       <Scene />
     </Canvas>
   )
