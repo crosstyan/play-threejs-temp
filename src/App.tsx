@@ -39,10 +39,16 @@ const Scene = () => {
   const { camera } = useThree()
   useControls("Camera", {
     phiGrp: buttonGroup({
-      label: 'rotate phi',
+      label: 'rotate theta',
       opts: {
-        // '+20º': () => cameraControlsRef.current?.rotate(0, 20 * DEG2RAD, true),
-        // '-40º': () => cameraControlsRef.current?.rotate(0, -40 * DEG2RAD, true)
+        '+45º': () => {
+          // @ts-expect-error version
+          easing.dampE(camera.rotation, [camera.rotation.x, camera.rotation.y + 45, camera.rotation.z], 1)
+        },
+        '-45º': () => {
+          // @ts-expect-error version
+          easing.dampE(camera.rotation, [camera.rotation.x, camera.rotation.y - 45, camera.rotation.z], 1)
+        }
       }
     }),
   })
