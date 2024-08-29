@@ -201,17 +201,15 @@ function App() {
 
   // https://sbcode.net/react-three-fiber/shadows/
   return (
-    <div style={{ display: "flex", justifyContent: "center" }}>
-      <Canvas shadows ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
-        <ambientLight intensity={0.25} />
-        <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
-        <Suspense fallback={null}>
-          <Box camera={camera} />
-        </Suspense>
-        <Ground />
-        <Floor />
-      </Canvas>
-    </div>
+    <Canvas shadows ref={canvasRef} style={{ background: "#eee", width: "100vw", height: "100vh" }} camera={camera}>
+      <ambientLight intensity={0.25} />
+      <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
+      <Suspense fallback={null}>
+        <Box camera={camera} />
+      </Suspense>
+      <Ground />
+      <Floor />
+    </Canvas>
   )
 }
 
