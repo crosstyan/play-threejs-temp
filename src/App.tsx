@@ -38,6 +38,8 @@ const Scene = () => {
   // https://discourse.threejs.org/t/rotate-gltf-model-with-mouse-move/49425/4
   // https://discourse.threejs.org/t/rotating-a-gltf-mesh-based-on-mouse-position-drops-the-fps-horribly/46990
 
+  // I guess this example could help set an offset to the camera
+  // https://github.com/yomotsu/camera-controls/blob/dev/examples/padding-with-view-offset.html
   const { camera } = useThree()
   const cameraControlsRef = useRef<CameraControls>(null)
   useControls("Camera", {
@@ -191,38 +193,18 @@ const Scene = () => {
           const xDiff = state.pointer.x - downCoords.x
           const yDiff = state.pointer.y - downCoords.y
           const yDeadZone = 0.125
-          // should around [-PI/2, PI/2)
-          const maxCameraRotX = 0
-          const minCameraRotX = -Math.PI / 12
 
-          const boxRotY = meshRef.current.rotation.y
-          const targetRotY = boxRotY + xDiff
+          const targetRotY = meshRef.current.rotation.y + xDiff * DEG2RAD * 75
           // @ts-expect-error dampE doesn't like Euler
           easing.dampE(meshRef.current.rotation, [0, targetRotY, 0], 0.1, delta)
 
           if (camera && Math.abs(yDiff) > yDeadZone) {
-            // if (camera.rotation.x > maxCameraRotX) {
-            //   camera.rotation.x = maxCameraRotX
-            // } else if (camera.rotation.x < minCameraRotX) {
-            //   camera.rotation.x = minCameraRotX
-            // } else {
-            //   const targetRotX = (() => {
-            //     const target = yDiff
-            //     // if (target > maxCameraRotX) {
-            //     //   return maxCameraRotX
-            //     // } else if (target < minCameraRotX) {
-            //     //   return minCameraRotX
-            //     // }
-            //     return target
-            //   })()
-            // }
             cameraControlsRef.current?.rotate(0, yDiff * DEG2RAD, false)
           }
         }
       }
     })
     // https://lisyarus.github.io/blog/posts/gltf-animation.html
-    const color = isDown ? "#0ac" : "#ca0"
     // https://threejs.org/docs/#api/en/helpers/SkeletonHelper
     const Payload = () => <primitive object={scene} />
     const Helper = () => helper ? <primitive object={helper} /> : null
