@@ -1,6 +1,6 @@
 import { OrbitControls, TrackballControls, Grid, AccumulativeShadows, RandomizedLight, useBVH, useGLTF } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
-import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh } from "three"
+import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh, Material, MeshStandardMaterial } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
@@ -54,7 +54,7 @@ function App() {
   // https://github.com/pmndrs/three-stdlib/blob/main/src/controls/OrbitControls.ts
   const Box = (props: BoxProps) => {
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
-    let meshRef = useRef<MeshRef>(null)
+    const meshRef = useRef<MeshRef>(null)
     const [isDown, setIsDown] = useState(false)
     const [downCoords, setDownCoords] = useState<Point2D>({ x: 0, y: 0 })
     const { scene: globalScene, gl, pointer } = useThree()
@@ -68,11 +68,23 @@ function App() {
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
       const model = scene.children[0]
+      const bodyMaterial = new MeshStandardMaterial()
+      // 200 210 240
+      const color = "#8EA6F0"
+      const colorHold = "#fcba03"
+      bodyMaterial.color.set(color)
+      const colorSetter = (color: string) => {
+        bodyMaterial.color.set(color)
+      }
       if (model) {
         // https://discourse.threejs.org/t/gltf-scene-traverse-property-ismesh-does-not-exist-on-type-object3d/27212/2
         model.traverse((o) => {
           if (o instanceof Mesh && o.isMesh) {
             o.castShadow = true
+            // _1 postfix is the joint
+            if (o.name == "Newton_Headless_Mesh") {
+              o.material = bodyMaterial
+            }
           }
         })
         if (!helper) {
@@ -85,13 +97,13 @@ function App() {
         // @ts-expect-error fiber
         const m = new AnimationMixer(scene)
         // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
-        setMixer(m)
         for (const clip of animations) {
           const subclip = AnimationUtils.subclip(clip, clip.uuid, 3, 300, 30)
-          let action = m.clipAction(subclip)
+          const action = m.clipAction(subclip)
           action.timeScale = 1.25
           action.play()
         }
+        setMixer(m)
       }
 
       if (isUseSkyBox) {
@@ -111,8 +123,12 @@ function App() {
         const x = pointer.x
         const y = pointer.y
         setDownCoords({ x, y })
+        colorSetter(colorHold)
       })
-      window.addEventListener("mouseup", () => setIsDown(false))
+      window.addEventListener("mouseup", () => {
+        setIsDown(false)
+        colorSetter(color)
+      })
       return () => {
         window.removeEventListener("mousedown", () => setIsDown(true))
         window.removeEventListener("mouseup", () => setIsDown(false))
@@ -162,7 +178,7 @@ function App() {
     // https://lisyarus.github.io/blog/posts/gltf-animation.html
     const color = isDown ? "#0ac" : "#ca0"
     // https://threejs.org/docs/#api/en/helpers/SkeletonHelper
-    const Payload = () => <primitive object={scene} children-0-castShadow />
+    const Payload = () => <primitive object={scene} />
     const Helper = () => helper ? <primitive object={helper} /> : null
     return (
       <>
