@@ -12,7 +12,6 @@ import "./App.css"
 const skyBoxUrl = "/skybox1.png"
 const glbfUrl = "/so.glb"
 const isUseSkyBox = false
-const cameraInitRotY = 0
 const Ground = () => {
   const gridConfig = {
     cellSize: 0.5,
@@ -31,6 +30,46 @@ const Ground = () => {
 const { DEG2RAD } = MathUtils
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
+const FPS = 30
+
+enum PoseStateKey {
+  Loop,
+  Focus,
+}
+
+type PoseFocusPayload = {
+  frameNumber: number
+  position: [number, number, number],
+  target: [number, number, number],
+}
+
+type PoseState = [PoseStateKey.Loop, null] | [PoseStateKey.Focus, PoseFocusPayload]
+
+const defaultCamera = {
+  "enabled": true,
+  "minDistance": 0.1,
+  "maxDistance": 1000,
+  "minZoom": 0.01,
+  "maxZoom": 100,
+  "minPolarAngle": Math.PI / 4,
+  "maxPolarAngle": Math.PI / 2,
+  "minAzimuthAngle": -Infinity,
+  "maxAzimuthAngle": Infinity,
+  "smoothTime": 0.25,
+  "draggingSmoothTime": 0.125,
+  "dollySpeed": 1,
+  "truckSpeed": 2,
+  "dollyToCursor": false,
+  "verticalDragToForward": false,
+  "target": [2.5, 3, 0],
+  "position": [2.5, 3, 13],
+  "zoom": 1,
+  "focalOffset": [0, 0, 0],
+  "target0": [0, 0, 0],
+  "position0": [0, 0, 5],
+  "zoom0": 1,
+  "focalOffset0": [0, 0, 0],
+} as const
 
 const Scene = () => {
   // https://codesandbox.io/p/sandbox/cameracontrols-basic-sew669
@@ -40,8 +79,31 @@ const Scene = () => {
 
   // I guess this example could help set an offset to the camera
   // https://github.com/yomotsu/camera-controls/blob/dev/examples/padding-with-view-offset.html
+  const [poseState, setPoseState] = useState<PoseState>([PoseStateKey.Loop, null])
+
   const { camera } = useThree()
   const cameraControlsRef = useRef<CameraControls>(null)
+
+  const restrictCamera = () => {
+    if (cameraControlsRef.current) {
+      cameraControlsRef.current.minPolarAngle = 0 + Math.PI / 4
+      cameraControlsRef.current.maxPolarAngle = Math.PI / 2
+    }
+  }
+
+  const unrestrictCamera = () => {
+    if (cameraControlsRef.current) {
+      cameraControlsRef.current.minPolarAngle = 0
+      cameraControlsRef.current.maxPolarAngle = Math.PI
+    }
+  }
+
+  const initCamera = (enableTransition: boolean = false) => {
+    // @ts-expect-error must be PerspectiveCamera
+    (camera as PerspectiveCamera).setFocalLength(35)
+    cameraControlsRef.current?.fromJSON(JSON.stringify(defaultCamera), enableTransition)
+  }
+
   useControls("Camera", {
     phiGrp: buttonGroup({
       label: 'rotate theta',
@@ -73,6 +135,29 @@ const Scene = () => {
         "-y1": () => cameraControlsRef.current?.truck(0, -1, true),
       }
     }),
+    stateGrp: buttonGroup({
+      label: "state",
+      opts: {
+        "loop": () => {
+          setPoseState([PoseStateKey.Loop, null])
+          initCamera(true)
+        },
+        "focus": () => {
+          // note that each time the focus button is clicked, 
+          // the mesh will be reset
+          unrestrictCamera()
+          const position = [6, 1.5, 0] as [number, number, number]
+          const target = [0, 1.5, 0] as [number, number, number]
+          const payload = {
+            frameNumber: 100,
+            position,
+            target,
+          }
+          setPoseState([PoseStateKey.Focus, payload])
+          cameraControlsRef.current?.setLookAt(position[0], position[1], position[2], target[0], target[1], target[2], true)
+        }
+      }
+    })
   })
 
   interface Point2D {
@@ -82,25 +167,19 @@ const Scene = () => {
 
   // https://drei.pmnd.rs/?path=/docs/controls-cameracontrols--docs
   useEffect(() => {
-    // @ts-expect-error must be PerspectiveCamera
-    (camera as PerspectiveCamera).setFocalLength(35)
-    camera.position.z = 8
-    camera.position.y = 3
-    camera.position.x = 2.5
-    if (cameraControlsRef.current) {
-      cameraControlsRef.current.dolly(-8)
-      cameraControlsRef.current.truck(2.5, -3)
-      cameraControlsRef.current.minPolarAngle = 0 + Math.PI / 4
-      cameraControlsRef.current.maxPolarAngle = Math.PI / 2
-    }
+    initCamera()
     return () => {
       cameraControlsRef.current?.reset()
     }
   }, [])
 
+  interface MainMeshProps {
+    poseState: PoseState
+  }
+
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
   // https://github.com/pmndrs/three-stdlib/blob/main/src/controls/OrbitControls.ts
-  const Box = () => {
+  const MainMesh = (props: MainMeshProps) => {
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
     const meshRef = useRef<MeshRef>(null)
     const [isDown, setIsDown] = useState(false)
@@ -113,18 +192,18 @@ const Scene = () => {
     // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
     // https://codesandbox.io/p/sandbox/r3f-animation-mixer-8rsdt?
     const { camera } = useThree()
+    const [st, payload] = props.poseState
 
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
       const model = scene.children[0]
       const bodyMaterial = new MeshStandardMaterial()
-      // 200 210 240
       const color = "#8EA6F0"
       const colorHold = "#fcba03"
-      bodyMaterial.color.set(color)
       const colorSetter = (color: string) => {
         bodyMaterial.color.set(color)
       }
+      colorSetter(color)
       if (model) {
         // https://discourse.threejs.org/t/gltf-scene-traverse-property-ismesh-does-not-exist-on-type-object3d/27212/2
         model.traverse((o) => {
@@ -140,6 +219,7 @@ const Scene = () => {
           // @ts-expect-error fiber
           const h = new SkeletonHelper(model)
           setHelper(h)
+          console.info(h)
         }
       }
       if (!mixer) {
@@ -147,7 +227,7 @@ const Scene = () => {
         const m = new AnimationMixer(scene)
         // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
         for (const clip of animations) {
-          const subclip = AnimationUtils.subclip(clip, clip.uuid, 3, 300, 30)
+          const subclip = AnimationUtils.subclip(clip, clip.name, 3, 300, FPS)
           const action = m.clipAction(subclip)
           action.timeScale = 1.25
           action.play()
@@ -167,29 +247,36 @@ const Scene = () => {
             globalScene.background = rt.texture as Texture
           })
       }
-      window.addEventListener("mousedown", (_ev) => {
+      const onDown = (_ev: MouseEvent) => {
         setIsDown(true)
         const x = pointer.x
         const y = pointer.y
         setDownCoords({ x, y })
         colorSetter(colorHold)
-      })
-      window.addEventListener("mouseup", () => {
+      }
+      const onUp = (_ev: MouseEvent) => {
         setIsDown(false)
         colorSetter(color)
-      })
+      }
+      window.addEventListener("mousedown", onDown)
+      window.addEventListener("mouseup", onUp)
       return () => {
-        window.removeEventListener("mousedown", () => setIsDown(true))
-        window.removeEventListener("mouseup", () => setIsDown(false))
+        window.removeEventListener("mousedown", onDown)
+        window.removeEventListener("mouseup", onUp)
       }
     }, [])
 
     useFrame((state, delta) => {
       if (mixer) {
-        mixer.update(delta)
+        if (st === PoseStateKey.Loop) {
+          mixer.update(delta)
+        } else if (st === PoseStateKey.Focus) {
+          const { frameNumber } = payload
+          mixer.setTime(frameNumber / FPS)
+        }
       }
       if (meshRef.current) {
-        if (isDown) {
+        if (isDown && st === PoseStateKey.Loop) {
           const xDiff = state.pointer.x - downCoords.x
           const yDiff = state.pointer.y - downCoords.y
           const yDeadZone = 0.125
@@ -207,7 +294,7 @@ const Scene = () => {
     // https://lisyarus.github.io/blog/posts/gltf-animation.html
     // https://threejs.org/docs/#api/en/helpers/SkeletonHelper
     const Payload = () => <primitive object={scene} />
-    const Helper = () => helper ? <primitive object={helper} /> : null
+    const Helper = () => (helper && st === PoseStateKey.Focus) ? <primitive object={helper} /> : null
     return (
       <>
         <mesh ref={meshRef} position={[0, -0.05, 0]} scale={2.5}>
@@ -240,7 +327,7 @@ const Scene = () => {
       <ambientLight intensity={0.25} />
       <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
       <Suspense fallback={null}>
-        <Box />
+        <MainMesh poseState={poseState} />
       </Suspense>
       <Ground />
       <Floor />
