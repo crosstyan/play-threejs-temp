@@ -1,16 +1,27 @@
-import { Grid, useBVH, useGLTF, CameraControls } from '@react-three/drei'
+import { Grid, useBVH, useGLTF, CameraControls, AccumulativeShadows } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
 import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh, Material, MeshStandardMaterial, MathUtils } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
 import { useControls, button, buttonGroup, folder } from 'leva'
-import { MouseButtons, ACTION } from './wrapper'
+import { MouseButtons, ACTION, NO_MOUSE, NO_TOUCH } from './wrapper'
 import "./App.css"
 
 
+type Action = "platform" | "leaving"
 const skyBoxUrl = "/skybox1.png"
-const glbfUrl = "/so.glb"
+// const glbfUrl = "/so.glb"
+const actionSel = "platform" as Action
+const glbfUrl = (() => {
+  if (actionSel === "platform") {
+    return "/plso.glb"
+  } else if (actionSel === "leaving") {
+    return "/so.glb"
+  } else {
+    throw new Error("Invalid action")
+  }
+})()
 const isUseSkyBox = false
 const Ground = () => {
   const gridConfig = {
@@ -104,49 +115,19 @@ const Scene = () => {
     cameraControlsRef.current?.fromJSON(JSON.stringify(defaultCamera), enableTransition)
   }
 
-  useControls("Camera", {
-    phiGrp: buttonGroup({
-      label: 'rotate theta',
-      opts: {
-        "+45º": () => cameraControlsRef.current?.rotate(45 * DEG2RAD, 0, true),
-        "-45º": () => cameraControlsRef.current?.rotate(-45 * DEG2RAD, 0, true)
-      }
-    }),
-    zoomGrp: buttonGroup({
-      label: 'zoom',
-      opts: {
-        '/2': () => cameraControlsRef.current?.zoom(camera.zoom / 2, true),
-        '/-2': () => cameraControlsRef.current?.zoom(-camera.zoom / 2, true)
-      }
-    }),
-    dollyGrp: buttonGroup({
-      label: 'dolly',
-      opts: {
-        '1': () => cameraControlsRef.current?.dolly(1, true),
-        '-1': () => cameraControlsRef.current?.dolly(-1, true)
-      }
-    }),
-    truckGrp: buttonGroup({
-      label: 'truck',
-      opts: {
-        "x1": () => cameraControlsRef.current?.truck(1, 0, true),
-        "-x1": () => cameraControlsRef.current?.truck(-1, 0, true),
-        "y1": () => cameraControlsRef.current?.truck(0, 1, true),
-        "-y1": () => cameraControlsRef.current?.truck(0, -1, true),
-      }
-    }),
+  useControls("选项", {
     stateGrp: buttonGroup({
-      label: "state",
+      label: "状态",
       opts: {
-        "loop": () => {
+        "循环播放": () => {
           setPoseState([PoseStateKey.Loop, null])
           initCamera(true)
         },
-        "focus": () => {
+        "侧面标准": () => {
           // note that each time the focus button is clicked, 
           // the mesh will be reset
           unrestrictCamera()
-          const position = [6, 1.5, 0] as [number, number, number]
+          const position = [9, 1.5, 0] as [number, number, number]
           const target = [0, 1.5, 0] as [number, number, number]
           const payload = {
             frameNumber: 100,
@@ -196,8 +177,12 @@ const Scene = () => {
 
     // TODO: save the rotation as state and update it with the easing function
     useEffect(() => {
+      camera.far = 1000
+      camera.near = 0.01
       const model = scene.children[0]
       const bodyMaterial = new MeshStandardMaterial()
+      const headMaterial = new MeshStandardMaterial()
+      headMaterial.color.set("#333")
       const color = "#8EA6F0"
       const colorHold = "#fcba03"
       const colorSetter = (color: string) => {
@@ -212,6 +197,8 @@ const Scene = () => {
             // _1 postfix is the joint
             if (o.name == "Newton_Headless_Mesh") {
               o.material = bodyMaterial
+            } else {
+              o.material = headMaterial
             }
           }
         })
@@ -227,10 +214,17 @@ const Scene = () => {
         const m = new AnimationMixer(scene)
         // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
         for (const clip of animations) {
-          const subclip = AnimationUtils.subclip(clip, clip.name, 3, 300, FPS)
-          const action = m.clipAction(subclip)
-          action.timeScale = 1.25
-          action.play()
+          if (actionSel === "leaving") {
+            const subclip = AnimationUtils.subclip(clip, clip.name, 3, 300, FPS)
+            const action = m.clipAction(subclip)
+            action.timeScale = 1.25
+            action.play()
+          } else if (actionSel === "platform") {
+            const subclip = AnimationUtils.subclip(clip, clip.name, 120, 380, FPS)
+            const action = m.clipAction(subclip)
+            action.timeScale = 1.25
+            action.play()
+          }
         }
         setMixer(m)
       }
@@ -247,22 +241,26 @@ const Scene = () => {
             globalScene.background = rt.texture as Texture
           })
       }
-      const onDown = (_ev: MouseEvent) => {
+      const onDown = (_ev: MouseEvent | TouchEvent) => {
         setIsDown(true)
         const x = pointer.x
         const y = pointer.y
         setDownCoords({ x, y })
         colorSetter(colorHold)
       }
-      const onUp = (_ev: MouseEvent) => {
+      const onUp = (_ev: MouseEvent | TouchEvent) => {
         setIsDown(false)
         colorSetter(color)
       }
       window.addEventListener("mousedown", onDown)
+      window.addEventListener("touchstart", onDown)
       window.addEventListener("mouseup", onUp)
+      window.addEventListener("touchend", onUp)
       return () => {
         window.removeEventListener("mousedown", onDown)
+        window.removeEventListener("touchstart", onDown)
         window.removeEventListener("mouseup", onUp)
+        window.removeEventListener("touchend", onUp)
       }
     }, [])
 
@@ -314,13 +312,6 @@ const Scene = () => {
     )
   }
 
-  const mouseButton = {
-    left: ACTION.NONE,
-    middle: ACTION.NONE,
-    right: ACTION.NONE,
-    wheel: ACTION.NONE,
-  } as const
-
   // https://sbcode.net/react-three-fiber/shadows/
   return (
     <>
@@ -331,7 +322,7 @@ const Scene = () => {
       </Suspense>
       <Ground />
       <Floor />
-      <CameraControls ref={cameraControlsRef} mouseButtons={mouseButton} />
+      <CameraControls ref={cameraControlsRef} mouseButtons={NO_MOUSE} touches={NO_TOUCH} />
     </>
   )
 }

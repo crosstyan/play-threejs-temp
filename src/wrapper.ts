@@ -29,3 +29,21 @@ export interface MouseButtons {
   right: mouseButtonAction
   wheel: mouseWheelAction
 }
+export const NO_MOUSE = {
+  left: ACTION.NONE,
+  middle: ACTION.NONE,
+  right: ACTION.NONE,
+  wheel: ACTION.NONE,
+} as const
+
+export interface Touches {
+    one: singleTouchAction;
+    two: multiTouchAction;
+    three: multiTouchAction;
+}
+
+export const NO_TOUCH = {
+  one: ACTION.NONE,
+  two: ACTION.NONE,
+  three: ACTION.NONE,
+} as const
