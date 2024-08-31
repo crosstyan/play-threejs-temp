@@ -23,6 +23,7 @@ const glbfUrl = (() => {
   }
 })()
 const isUseSkyBox = false
+const FPS = 30
 const Ground = () => {
   const gridConfig = {
     cellSize: 0.5,
@@ -41,7 +42,6 @@ const Ground = () => {
 const { DEG2RAD } = MathUtils
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
-const FPS = 30
 
 enum PoseStateKey {
   Loop,
@@ -110,7 +110,6 @@ const Scene = () => {
   }
 
   const initCamera = (enableTransition: boolean = false) => {
-    // @ts-expect-error must be PerspectiveCamera
     (camera as PerspectiveCamera).setFocalLength(35)
     cameraControlsRef.current?.fromJSON(JSON.stringify(defaultCamera), enableTransition)
   }
@@ -193,6 +192,9 @@ const Scene = () => {
         // https://discourse.threejs.org/t/gltf-scene-traverse-property-ismesh-does-not-exist-on-type-object3d/27212/2
         model.traverse((o) => {
           if (o instanceof Mesh && o.isMesh) {
+            // https://learnopengl.com/Guest-Articles/2021/Scene/Frustum-Culling
+            // https://en.wikipedia.org/wiki/Viewing_frustum
+            o.frustumCulled = false
             o.castShadow = true
             // _1 postfix is the joint
             if (o.name == "Newton_Headless_Mesh") {
@@ -203,28 +205,27 @@ const Scene = () => {
           }
         })
         if (!helper) {
-          // @ts-expect-error fiber
           const h = new SkeletonHelper(model)
           setHelper(h)
           console.info(h)
         }
       }
       if (!mixer) {
-        // @ts-expect-error fiber
         const m = new AnimationMixer(scene)
         // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
         for (const clip of animations) {
-          if (actionSel === "leaving") {
-            const subclip = AnimationUtils.subclip(clip, clip.name, 3, 300, FPS)
-            const action = m.clipAction(subclip)
-            action.timeScale = 1.25
-            action.play()
-          } else if (actionSel === "platform") {
-            const subclip = AnimationUtils.subclip(clip, clip.name, 120, 380, FPS)
-            const action = m.clipAction(subclip)
-            action.timeScale = 1.25
-            action.play()
-          }
+          const subclip = (() => {
+            if (actionSel === "leaving") {
+              return AnimationUtils.subclip(clip, clip.name, 3, 300, FPS)
+            } else if (actionSel === "platform") {
+              return AnimationUtils.subclip(clip, clip.name, 120, 380, FPS)
+            } else {
+              throw new Error("Invalid action")
+            }
+          })()
+          const action = m.clipAction(subclip)
+          action.timeScale = 1.25
+          action.play()
         }
         setMixer(m)
       }
@@ -235,9 +236,7 @@ const Scene = () => {
           skyBoxUrl,
           () => {
             const rt = new WebGLCubeRenderTarget(texture.image.height)
-            // @ts-expect-error different threejs version
             rt.fromEquirectangularTexture(gl, texture)
-            // @ts-expect-error different threejs version
             globalScene.background = rt.texture as Texture
           })
       }
@@ -280,7 +279,6 @@ const Scene = () => {
           const yDeadZone = 0.125
 
           const targetRotY = meshRef.current.rotation.y + xDiff * DEG2RAD * 75
-          // @ts-expect-error dampE doesn't like Euler
           easing.dampE(meshRef.current.rotation, [0, targetRotY, 0], 0.1, delta)
 
           if (camera && Math.abs(yDiff) > yDeadZone) {
