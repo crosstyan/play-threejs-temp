@@ -1,11 +1,27 @@
 import { Grid, useBVH, useGLTF, CameraControls, AccumulativeShadows, OrbitControls } from '@react-three/drei'
 import { Camera, Canvas, useFrame, MeshProps, useThree, useLoader } from '@react-three/fiber'
-import { PerspectiveCamera, OrthographicCamera, TextureLoader, WebGLCubeRenderTarget, Texture, SkeletonHelper, AnimationMixer, AnimationUtils, Mesh, Material, MeshStandardMaterial, MathUtils } from "three"
+import {
+  PerspectiveCamera,
+  OrthographicCamera,
+  TextureLoader,
+  WebGLCubeRenderTarget,
+  Texture,
+  SkeletonHelper,
+  AnimationMixer,
+  AnimationUtils,
+  Mesh,
+  Material,
+  MeshStandardMaterial,
+  MathUtils,
+  Object3D,
+  Box3,
+  Vector3,
+} from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
 import { useControls, button, buttonGroup, folder } from 'leva'
-import { MouseButtons, ACTION, NO_MOUSE, NO_TOUCH } from './wrapper'
+import { BVHLoader } from "three/addons"
 import "./App.css"
 
 
@@ -42,6 +58,28 @@ type PoseFocusPayload = {
 
 type PoseState = [PoseStateKey.Loop, null] | [PoseStateKey.Focus, PoseFocusPayload]
 
+function fitCameraToObject(controls: CameraControls, object: Object3D,
+  offset = 1.25, phi = Math.PI / 4, theta = Math.PI / 4) {
+  const boundingBox = new Box3().setFromObject(object)
+  const center = boundingBox.getCenter(new Vector3())
+  const size = boundingBox.getSize(new Vector3())
+
+  const maxDim = Math.max(size.x, size.y, size.z)
+  // @ts-expect-error
+  const fov = controls.camera.fov * (Math.PI / 180)
+  let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov / 2)) * offset
+
+  controls.setLookAt(
+    center.x + cameraZ * Math.sin(theta) * Math.cos(phi),
+    center.y + cameraZ * Math.sin(phi),
+    center.z + cameraZ * Math.cos(theta) * Math.cos(phi),
+    center.x,
+    center.y,
+    center.z,
+    true
+  )
+}
+
 const Scene = () => {
   // https://codesandbox.io/p/sandbox/cameracontrols-basic-sew669
   // https://sbcode.net/react-three-fiber/camera/
@@ -64,30 +102,70 @@ const Scene = () => {
     poseState: PoseState
   }
 
+  // https://github.com/mrdoob/three.js/blob/dev/examples/webgl_loader_bvh.html
+  const BvhMesh = () => {
+    const bvhPose = useLoader(BVHLoader, "/plpl.bvh")
+    const [stBone, setBone] = useState<Object3D | null>(null)
+    const [bvhSkeleton, setBvhSkeleton] = useState<SkeletonHelper | null>(null)
+    const [mixer, setMixer] = useState<AnimationMixer | null>(null)
+    useFrame((state, delta) => {
+      if (mixer) {
+        mixer.update(delta)
+      }
+    })
+    useEffect(() => {
+      if (!bvhSkeleton) {
+        const bone = bvhPose.skeleton.bones[0]
+        const skeletonHelper = new SkeletonHelper(bone)
+        setBvhSkeleton(skeletonHelper)
+        setBone(bone)
+      }
+      if (!mixer) {
+        const bone = bvhPose.skeleton.bones[0]
+        const bvhMixer = new AnimationMixer(bone)
+        const bvhAction = bvhMixer.clipAction(bvhPose.clip)
+        bvhAction.play()
+        setMixer(bvhMixer)
+      }
+    }, [])
+    const BvhHipBone = () => (stBone) ? <primitive object={stBone} /> : null
+    const BvhSkeleton = () => (bvhSkeleton) ? <primitive object={bvhSkeleton} /> : null
+    return (<>
+      <BvhHipBone />
+      <BvhSkeleton />
+    </>)
+  }
+
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
   // https://github.com/pmndrs/three-stdlib/blob/main/src/controls/OrbitControls.ts
   const MainMesh = (props: MainMeshProps) => {
     type MeshRef = extractRef<NonNullable<MeshProps["ref"]>>
     const meshRef = useRef<MeshRef>(null)
-    const [isDown, setIsDown] = useState(false)
-    const [downCoords, setDownCoords] = useState<Point2D>({ x: 0, y: 0 })
-    const { scene: globalScene, gl, pointer } = useThree()
     // https://r3f.docs.pmnd.rs/tutorials/loading-models
     const { nodes, scene, materials, animations } = useGLTF(glbfUrl)
     const [helper, setHelper] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
     // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
     // https://codesandbox.io/p/sandbox/r3f-animation-mixer-8rsdt?
-    const { camera } = useThree()
-    const [st, payload] = props.poseState
 
     useEffect(() => {
+
+      const model = scene.children[0]
+      if (!helper) {
+        const h = new SkeletonHelper(model)
+        setHelper(h)
+      }
       if (!mixer) {
         const m = new AnimationMixer(scene)
         // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
         for (const clip of animations) {
-          const action = m.clipAction(clip)
-          action.play()
+          // for some reason there are still redundant motion data left 
+          // only pick `pose` entries
+          if (clip.name.includes("pose")) {
+            const action = m.clipAction(clip)
+            console.log("clip", clip)
+            action.play()
+          }
         }
         setMixer(m)
       }
@@ -95,19 +173,17 @@ const Scene = () => {
 
     useFrame((state, delta) => {
       if (mixer) {
-        if (st === PoseStateKey.Loop) {
-          mixer.update(delta)
-        }
+        mixer.update(delta)
       }
     })
 
     // https://lisyarus.github.io/blog/posts/gltf-animation.html
     // https://threejs.org/docs/#api/en/helpers/SkeletonHelper
     const Payload = () => <primitive object={scene} />
-    const Helper = () => (helper && st === PoseStateKey.Focus) ? <primitive object={helper} /> : null
+    const Helper = () => (helper) ? <primitive object={helper} /> : null
     return (
       <>
-        <mesh ref={meshRef} position={[0, -0.05, 0]} scale={2.5}>
+        <mesh ref={meshRef} position={[0, -0.05, 0]} scale={0.015}>
           <Payload />
         </mesh>
         <Helper />
@@ -130,11 +206,15 @@ const Scene = () => {
       <ambientLight intensity={0.25} />
       <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
       <Suspense fallback={null}>
-        <MainMesh poseState={poseState} />
+        {/* <MainMesh poseState={poseState} /> */}
+        <BvhMesh />
       </Suspense>
-      {/* <Ground /> */}
+      <Ground />
+      <CameraControls
+        ref={cameraControlsRef}
+        enabled={true}
+      />
       {/* <Floor /> */}
-      <OrbitControls />
     </>
   )
 }
