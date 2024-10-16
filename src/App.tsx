@@ -16,12 +16,14 @@ import {
   Object3D,
   Box3,
   Vector3,
+  Matrix4,
 } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
 import { useControls, button, buttonGroup, folder } from 'leva'
 import { BVHLoader } from "three/addons"
+import { getBasisTransform } from './transform'
 import "./App.css"
 
 
@@ -104,10 +106,22 @@ const Scene = () => {
 
   // https://github.com/mrdoob/three.js/blob/dev/examples/webgl_loader_bvh.html
   const BvhMesh = () => {
-    const bvhPose = useLoader(BVHLoader, "/plpl.bvh")
+    const bvhPose = useLoader(BVHLoader, "/plpl_xzy.bvh")
     const [stBone, setBone] = useState<Object3D | null>(null)
     const [bvhSkeleton, setBvhSkeleton] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
+  //   const bvhToThreeMatrix = new Matrix4().set(
+	// 1.0, 0.0, 0.0, 0.0,
+	// 0.0, 0.0, 1.0, 0.0,
+	// 0.0, -1.0, 0.0, 0.0,
+	// 0.0, 0.0, 0.0, 1.0
+  //   );
+  // const bvhToThreeMatrix = new Matrix4()
+  // const threeJsAxes = "+X+Y+Z"
+  // const blenderAxes = "+X+Z+Y"
+  // getBasisTransform(blenderAxes, threeJsAxes, bvhToThreeMatrix)
+
+
     useFrame((state, delta) => {
       if (mixer) {
         mixer.update(delta)
@@ -115,10 +129,25 @@ const Scene = () => {
     })
     useEffect(() => {
       if (!bvhSkeleton) {
+        // bvhPose.skeleton.bones.forEach((bone) => {
+        //   bone.applyMatrix4(bvhToThreeMatrix)
+        // })
         const bone = bvhPose.skeleton.bones[0]
         const skeletonHelper = new SkeletonHelper(bone)
         setBvhSkeleton(skeletonHelper)
         setBone(bone)
+        console.info("bones", bvhPose)
+        // console.info("conversionMatrix", bvhToThreeMatrix)
+        const rotTracks = bvhPose.clip.tracks.filter((track) => track.name.includes(".quaternion"))
+        // for (const track of rotTracks) {
+        //   for (let i = 0; i < track.values.length; i += 4) {
+        //     const temp = track.values[i];
+        //     track.values[i] = track.values[i + 1];
+        //     track.values[i + 1] = track.values[i + 2];
+        //     track.values[i + 2] = temp;
+        //     track.values[i + 3] = -track.values[i + 3];
+        //   }
+        // }
       }
       if (!mixer) {
         const bone = bvhPose.skeleton.bones[0]
@@ -164,7 +193,7 @@ const Scene = () => {
           if (clip.name.includes("pose")) {
             const action = m.clipAction(clip)
             console.log("clip", clip)
-            action.play()
+            // action.play()
           }
         }
         setMixer(m)
@@ -206,7 +235,6 @@ const Scene = () => {
       <ambientLight intensity={0.25} />
       <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
       <Suspense fallback={null}>
-        {/* <MainMesh poseState={poseState} /> */}
         <BvhMesh />
       </Suspense>
       <Ground />
