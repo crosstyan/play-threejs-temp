@@ -23,7 +23,6 @@ import { easing } from "maath"
 import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 'react'
 import { useControls, button, buttonGroup, folder } from 'leva'
 import { BVHLoader } from "three/addons"
-import { getBasisTransform } from './transform'
 import "./App.css"
 
 
@@ -106,7 +105,7 @@ const Scene = () => {
 
   // https://github.com/mrdoob/three.js/blob/dev/examples/webgl_loader_bvh.html
   const BvhMesh = () => {
-    const bvhPose = useLoader(BVHLoader, "/plpl_xzy.bvh")
+    const bvhPose = useLoader(BVHLoader, "/171_jump.bvh")
     const [stBone, setBone] = useState<Object3D | null>(null)
     const [bvhSkeleton, setBvhSkeleton] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
@@ -159,9 +158,12 @@ const Scene = () => {
     }, [])
     const BvhHipBone = () => (stBone) ? <primitive object={stBone} /> : null
     const BvhSkeleton = () => (bvhSkeleton) ? <primitive object={bvhSkeleton} /> : null
+    const SCALE = 0.15
     return (<>
+    <mesh position={[0, -1, 0]} scale={[SCALE, SCALE, SCALE]}>
       <BvhHipBone />
       <BvhSkeleton />
+      </mesh>
     </>)
   }
 
