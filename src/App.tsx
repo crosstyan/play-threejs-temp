@@ -271,60 +271,24 @@ const Scene = () => {
                 }
                 const part = track.name.split(".")[0]
                 const targetEuler = platformSkeleton[part] // [F 3]
-                const vx = new Vector3(1, 0, 0)
-                const vy = new Vector3(0, 1, 0)
-                const vz = new Vector3(0, 0, 1)
                 const values = new Float32Array(frameCount * 4)
                 for (let i = 0; i < frameCount; i++) {
                   // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
                   // the exported format is Euler in XYZ order
-                  const e = new Euler(targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD)
+                  const e = new Euler(targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD, "ZXY")
                   let q = refQuat.clone()
-                  if (part == "LeftArm") {
-                    if (i == 0) {
-                      console.info("LeftArmVal", { x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG })
-                      const eQ = new Euler()
-                      eQ.setFromQuaternion(q)
-                      console.info("LeftArmRef", { x: eQ.x * RAD2DEG, y: eQ.y * RAD2DEG, z: eQ.z * RAD2DEG })
+                  // I need to put a XYZ rotation ball to see what's going on
+                  // so blender actually did something interesting to convert the Euler from different coordinate system
+                  // BVH claims it's Zrotation Xrotation Yrotation, but the numbers are not consistent with what blender displays
+                  //         (X     , Y    ,     Z) Euler
+                  // before: (-63.84, 19.76, -4.51) (unknown, raw BVH channel, but for position it's Y up Z front, consistent with blender?)
+                  // after:  (-23.8 , 63.0 , -2.17) (Blender claims it's ZXY Euler)
+                  // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/__init__.py
+                  // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/import_bvh.py
 
-                      const qq = q.clone()
-                      // I need to put a XYZ rotation ball to see what's going on
-                      // so blender actually did something interesting to convert the Euler from different coordinate system
-                      // BVH claims it's Zrotation Xrotation Yrotation, but the numbers are not consistent with what blender displays
-                      //         (X     , Y    ,     Z) Euler
-                      // before: (-63.84, 19.76, -4.51) (unknown, raw BVH channel, but for position it's Y up Z front, consistent with blender?)
-                      // after:  (-23.8 , 63.0 , -2.17) (Blender claims it's ZXY Euler)
-                      // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/__init__.py
-                      // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/import_bvh.py
-
-                      const qZ = new Quaternion()
-                      qZ.setFromAxisAngle(vz, e.z)
-                      qq.multiply(qZ)
-
-                      const qX = new Quaternion()
-                      qX.setFromAxisAngle(vx, e.x)
-                      qq.multiply(qX)
-
-                      const qY = new Quaternion()
-                      qY.setFromAxisAngle(vy, e.y)
-                      qq.multiply(qY)
-
-                      const eQ_ = new Euler()
-                      eQ_.setFromQuaternion(qq)
-                      console.info("LeftArmNew", { x: eQ_.x * RAD2DEG, y: eQ_.y * RAD2DEG, z: eQ_.z * RAD2DEG })
-                      q = qq
-                    }
-                  } else {
-                    const qX = new Quaternion()
-                    qX.setFromAxisAngle(vx, e.x)
-                    q.multiply(qX)
-                    const qY = new Quaternion()
-                    qY.setFromAxisAngle(vy, e.y)
-                    q.multiply(qY)
-                    const qZ = new Quaternion()
-                    qZ.setFromAxisAngle(vz, e.z)
-                    q.multiply(qZ)
-                  }
+                  const qT = new Quaternion()
+                  qT.setFromEuler(e)
+                  q.multiply(qT)
                   values[i * 4] = q.x
                   values[i * 4 + 1] = q.y
                   values[i * 4 + 2] = q.z
@@ -340,16 +304,8 @@ const Scene = () => {
             return clip
           }
           const newClip = setAnimationFromPose(selClip, platformSkeleton)
-          const subClip = AnimationUtils.subclip(newClip, "pose", 0, 1)
-          const action = m.clipAction(subClip)
-          const entryName = "LeftArm.quaternion"
-          const kt = subClip.tracks.filter((track) => track.name.includes(entryName))[0]
-          const q = new Quaternion(kt.values[0], kt.values[1], kt.values[2], kt.values[3])
-          const e = new Euler()
-          e.setFromQuaternion(q)
-          // console.info("euler", { x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG })
-          // console.info(kt)
-          // console.info("clip", subClip)
+          // const subClip = AnimationUtils.subclip(newClip, "pose", 0, 1)
+          const action = m.clipAction(newClip)
           action.play()
           setMixer(m)
         }
