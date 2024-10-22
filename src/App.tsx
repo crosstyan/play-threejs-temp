@@ -274,8 +274,9 @@ const Scene = () => {
                 const values = new Float32Array(frameCount * 4)
                 for (let i = 0; i < frameCount; i++) {
                   // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
-                  // the exported format is Euler in XYZ order
-                  const e = new Euler(targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD, "ZXY")
+                  // the exported format is Euler in XYZ
+                  const [x, y, z] = [targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD]
+                  const e = new Euler(x, y, z, "ZXY")
                   let q = refQuat.clone()
                   // I need to put a XYZ rotation ball to see what's going on
                   // so blender actually did something interesting to convert the Euler from different coordinate system
