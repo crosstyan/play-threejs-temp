@@ -280,34 +280,38 @@ const Scene = () => {
                   // the exported format is Euler in XYZ order
                   const e = new Euler(targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD)
                   let q = refQuat.clone()
-                  if (part=="LeftArm"){
-                    if (i==0){
-                      console.info("LeftArmVal", {x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG})
+                  if (part == "LeftArm") {
+                    if (i == 0) {
+                      console.info("LeftArmVal", { x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG })
                       const eQ = new Euler()
                       eQ.setFromQuaternion(q)
-                      console.info("LeftArmRef", {x: eQ.x * RAD2DEG, y: eQ.y * RAD2DEG, z: eQ.z * RAD2DEG})
+                      console.info("LeftArmRef", { x: eQ.x * RAD2DEG, y: eQ.y * RAD2DEG, z: eQ.z * RAD2DEG })
 
                       const qq = q.clone()
-                      const qX = new Quaternion()
-                      qX.setFromAxisAngle(vx, (-23.8)*DEG2RAD)
-                      qq.multiply(qX)
-                      const qY = new Quaternion()
                       // I need to put a XYZ rotation ball to see what's going on
                       // so blender actually did something interesting to convert the Euler from different coordinate system
                       // BVH claims it's Zrotation Xrotation Yrotation, but the numbers are not consistent with what blender displays
                       //         (X     , Y    ,     Z) Euler
                       // before: (-63.84, 19.76, -4.51) (unknown, raw BVH channel, but for position it's Y up Z front, consistent with blender?)
-                      // after:  (-23.8 , 63.0 , -2.17) (Blender claims it's ZXY Euler, and seems Three.js also recognizes it)
+                      // after:  (-23.8 , 63.0 , -2.17) (Blender claims it's ZXY Euler)
                       // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/__init__.py
                       // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/import_bvh.py
-                      qY.setFromAxisAngle(vy, e.y + (-63)*DEG2RAD)
-                      qq.multiply(qY)
+
                       const qZ = new Quaternion()
-                      qZ.setFromAxisAngle(vz, e.z + (-2)*DEG2RAD)
+                      qZ.setFromAxisAngle(vz, e.z)
                       qq.multiply(qZ)
+
+                      const qX = new Quaternion()
+                      qX.setFromAxisAngle(vx, e.x)
+                      qq.multiply(qX)
+
+                      const qY = new Quaternion()
+                      qY.setFromAxisAngle(vy, e.y)
+                      qq.multiply(qY)
+
                       const eQ_ = new Euler()
                       eQ_.setFromQuaternion(qq)
-                      console.info("LeftArmNew", {x: eQ_.x * RAD2DEG, y: eQ_.y * RAD2DEG, z: eQ_.z * RAD2DEG})
+                      console.info("LeftArmNew", { x: eQ_.x * RAD2DEG, y: eQ_.y * RAD2DEG, z: eQ_.z * RAD2DEG })
                       q = qq
                     }
                   } else {
