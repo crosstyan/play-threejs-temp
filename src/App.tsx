@@ -20,6 +20,7 @@ import {
   Quaternion,
   Euler,
   KeyframeTrack,
+  AnimationClip,
 } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
@@ -200,6 +201,10 @@ const Scene = () => {
     </>)
   }
 
+  // bone name as key 
+  // [F 3]
+  type BoneChannelList = Record<string, number[][]>
+
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
   // https://github.com/pmndrs/three-stdlib/blob/main/src/controls/OrbitControls.ts
   const MainMesh = (props: MainMeshProps) => {
@@ -216,11 +221,7 @@ const Scene = () => {
     useEffect(() => {
       const p = new Promise(async (resolve, reject) => {
         const data = await fetch(PLATFORM_POSE_URL)
-        const platformSkeleton = await data.json()
-        const frameCount = platformSkeleton["Hips"].length // [F 3]
-        const frameRate = 30
-        console.info("platformSkeleton", platformSkeleton)
-        console.info("frameCount", frameCount)
+        const platformSkeleton = await data.json() as BoneChannelList
         const model = scene.children[0]
         if (!helper) {
           const h = new SkeletonHelper(model)
@@ -229,87 +230,83 @@ const Scene = () => {
         if (!mixer) {
           const m = new AnimationMixer(scene)
           // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
-          for (const clip of animations) {
-            // for some reason there are still redundant motion data left 
-            // only pick `pose` entries
-            if (clip.name.includes("pose")) {
-              // let's create a new clip with only the pose data
-              // for pose data, do nothing, only need to provide
-              console.info("oldClip", clip)
-              // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array
-              // for position
-              // times: Float32Array [frameCount]
-              // values: Float32Array [frameCount * 3]
-              // for quaternion
-              // times: Float32Array [frameCount]
-              // values: Float32Array [frameCount * 4]
-              const setPose = (track: KeyframeTrack) => {
-                if (track.name.includes(".position")) {
-                  const oldValues = track.values
-                  // just needs to repeat it for each frame
-                  const x = oldValues[3]
-                  const y = oldValues[4]
-                  const z = oldValues[5]
-                  // console.info("position", track.name, { x, y, z })
-                  const values = new Float32Array(frameCount * 3)
-                  for (let i = 0; i < frameCount; i++) {
-                    values[i * 3] = x
-                    values[i * 3 + 1] = y
-                    values[i * 3 + 2] = z
-                  }
-                  const time = new Float32Array(frameCount)
-                  for (let i = 0; i < frameCount; i++) {
-                    time[i] = i / frameRate
-                  }
-                  track.times = time
-                  track.values = values
+          const selClip = animations.filter((clip) => clip.name.includes("pose"))[0]
+          const setAnimationFromPose = (originalClip: AnimationClip, platformSkeleton: BoneChannelList, frameRate: number = 30) => {
+            const frameCount = platformSkeleton["Hips"].length // [F 3]
+            const clip = originalClip.clone()
+            // times: Float32Array [frameCount]
+            // values: Float32Array [frameCount * 3]
+            // for quaternion
+            // times: Float32Array [frameCount]
+            // values: Float32Array [frameCount * 4]
+            const setPose = (track: KeyframeTrack) => {
+              if (track.name.includes(".position")) {
+                const oldValues = track.values
+                // just needs to repeat it for each frame
+                const x = oldValues[3]
+                const y = oldValues[4]
+                const z = oldValues[5]
+                // console.info("position", track.name, { x, y, z })
+                const values = new Float32Array(frameCount * 3)
+                for (let i = 0; i < frameCount; i++) {
+                  values[i * 3] = x
+                  values[i * 3 + 1] = y
+                  values[i * 3 + 2] = z
                 }
-                if (track.name.includes(".quaternion")) {
-                  // it's the T-Pose, 
-                  // we need to rotate it relative to the T-Pose 
-                  // no idea why setting it to (0, 0, 0) would cause the model to be distorted (hands and legs are in the sky!)
-                  const oldValues = track.values
-                  const refQuat = new Quaternion(oldValues[0], oldValues[1], oldValues[2], oldValues[3])
-                  const time = new Float32Array(frameCount)
-                  for (let i = 0; i < frameCount; i++) {
-                    time[i] = i / frameRate
-                  }
-                  // the exported format is Euler in XYZ order
-                  const part = track.name.split(".")[0]
-                  const targetEuler = platformSkeleton[part] // [F 3]
-                  const vx = new Vector3(1, 0, 0)
-                  const vy = new Vector3(0, 1, 0)
-                  const vz = new Vector3(0, 0, 1)
-                  const values = new Float32Array(frameCount * 4)
-                  for (let i = 0; i < frameCount; i++) {
-                    // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
-                    const t = refQuat.clone()
-                    const quatX = new Quaternion()
-                    quatX.setFromAxisAngle(vx, targetEuler[i][0] * DEG2RAD)
-                    t.multiply(quatX)
-                    const quatY = new Quaternion()
-                    quatY.setFromAxisAngle(vy, targetEuler[i][1] * DEG2RAD)
-                    t.multiply(quatY)
-                    const quatZ = new Quaternion()
-                    quatZ.setFromAxisAngle(vz, targetEuler[i][2] * DEG2RAD)
-                    t.multiply(quatZ)
-                    values[i * 4] = t.x
-                    values[i * 4 + 1] = t.y
-                    values[i * 4 + 2] = t.z
-                    values[i * 4 + 3] = t.w
-                  }
-                  track.times = time
-                  track.values = values
+                const time = new Float32Array(frameCount)
+                for (let i = 0; i < frameCount; i++) {
+                  time[i] = i / frameRate
                 }
+                track.times = time
+                track.values = values
               }
-              clip.tracks.forEach(setPose)
-              clip.tracks = clip.tracks.filter((track) => !track.name.includes(".scale"))
-              clip.duration = frameCount / frameRate
-              console.info("newClip", clip)
-              const action = m.clipAction(clip)
-              action.play()
+              if (track.name.includes(".quaternion")) {
+                // it's the T-Pose, 
+                // we need to rotate it relative to the T-Pose 
+                // no idea why setting it to (0, 0, 0) would cause the model to be distorted 
+                // (hands and legs are in the sky!)
+                const oldValues = track.values
+                const refQuat = new Quaternion(oldValues[0], oldValues[1], oldValues[2], oldValues[3])
+                const time = new Float32Array(frameCount)
+                for (let i = 0; i < frameCount; i++) {
+                  time[i] = i / frameRate
+                }
+                // the exported format is Euler in XYZ order
+                const part = track.name.split(".")[0]
+                const targetEuler = platformSkeleton[part] // [F 3]
+                const vx = new Vector3(1, 0, 0)
+                const vy = new Vector3(0, 1, 0)
+                const vz = new Vector3(0, 0, 1)
+                const values = new Float32Array(frameCount * 4)
+                for (let i = 0; i < frameCount; i++) {
+                  // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
+                  const t = refQuat.clone()
+                  const quatX = new Quaternion()
+                  quatX.setFromAxisAngle(vx, targetEuler[i][0] * DEG2RAD)
+                  t.multiply(quatX)
+                  const quatY = new Quaternion()
+                  quatY.setFromAxisAngle(vy, targetEuler[i][1] * DEG2RAD)
+                  t.multiply(quatY)
+                  const quatZ = new Quaternion()
+                  quatZ.setFromAxisAngle(vz, targetEuler[i][2] * DEG2RAD)
+                  t.multiply(quatZ)
+                  values[i * 4] = t.x
+                  values[i * 4 + 1] = t.y
+                  values[i * 4 + 2] = t.z
+                  values[i * 4 + 3] = t.w
+                }
+                track.times = time
+                track.values = values
+              }
             }
+            clip.tracks.forEach(setPose)
+            clip.tracks = clip.tracks.filter((track) => !track.name.includes(".scale"))
+            clip.duration = frameCount / frameRate
+            return clip
           }
+          const newClip = setAnimationFromPose(selClip, platformSkeleton)
+          const action = m.clipAction(newClip)
+          action.play()
           setMixer(m)
         }
       })
