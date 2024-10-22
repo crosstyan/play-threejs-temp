@@ -204,7 +204,7 @@ const Scene = () => {
 
   // bone name as key 
   // [F 3]
-  type BoneChannelList = Record<string, number[][]>
+  type BoneChannelList = Record<string, Array<[number, number, number]>>
 
   // https://github.com/pmndrs/drei/blob/master/src/core/OrbitControls.tsx
   // https://github.com/pmndrs/three-stdlib/blob/main/src/controls/OrbitControls.ts
@@ -272,11 +272,16 @@ const Scene = () => {
                 const part = track.name.split(".")[0]
                 const targetEuler = platformSkeleton[part] // [F 3]
                 const values = new Float32Array(frameCount * 4)
+                const changeOfBasisMatrix = new Matrix4().makeRotationX(-Math.PI / 2)
                 for (let i = 0; i < frameCount; i++) {
                   // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
                   // the exported format is Euler in XYZ
-                  const [x, y, z] = [targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD]
+                  const [x, y, z] = [targetEuler[i][0] * DEG2RAD, (targetEuler[i][1]) * DEG2RAD, targetEuler[i][2] * DEG2RAD]
                   const e = new Euler(x, y, z, "ZXY")
+                  const tempDcm = new Matrix4()
+                  // https://github.com/mrdoob/three.js/pull/11540/files
+                  tempDcm.makeRotationFromEuler(e)
+                  tempDcm.premultiply(changeOfBasisMatrix)
                   let q = refQuat.clone()
                   // I need to put a XYZ rotation ball to see what's going on
                   // so blender actually did something interesting to convert the Euler from different coordinate system
@@ -288,7 +293,7 @@ const Scene = () => {
                   // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/import_bvh.py
 
                   const qT = new Quaternion()
-                  qT.setFromEuler(e)
+                  qT.setFromRotationMatrix(tempDcm)
                   q.multiply(qT)
                   values[i * 4] = q.x
                   values[i * 4 + 1] = q.y
