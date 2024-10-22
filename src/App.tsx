@@ -28,6 +28,7 @@ import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 're
 import { useControls, button, buttonGroup, folder } from 'leva'
 import { BVHLoader } from "three/addons"
 import "./App.css"
+import { RAD2DEG } from 'three/src/math/MathUtils.js'
 
 
 const glbfUrl = "/pl_no_s.glb"
@@ -214,6 +215,7 @@ const Scene = () => {
     const { nodes, scene, materials, animations } = useGLTF(glbfUrl)
     const [helper, setHelper] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
+    // const PLATFORM_POSE_URL = "/platform_pose.json"
     const PLATFORM_POSE_URL = "/platform_pose.json"
     // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
     // https://codesandbox.io/p/sandbox/r3f-animation-mixer-8rsdt?
@@ -277,16 +279,48 @@ const Scene = () => {
                   // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
                   // the exported format is Euler in XYZ order
                   const e = new Euler(targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD)
-                  const q = refQuat.clone()
-                  const qX = new Quaternion()
-                  qX.setFromAxisAngle(vx, e.x)
-                  q.multiply(qX)
-                  const qY = new Quaternion()
-                  qY.setFromAxisAngle(vy, e.y)
-                  q.multiply(qY)
-                  const qZ = new Quaternion()
-                  qZ.setFromAxisAngle(vz, e.z)
-                  q.multiply(qZ)
+                  let q = refQuat.clone()
+                  if (part=="LeftArm"){
+                    if (i==0){
+                      console.info("LeftArmVal", {x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG})
+                      const eQ = new Euler()
+                      eQ.setFromQuaternion(q)
+                      console.info("LeftArmRef", {x: eQ.x * RAD2DEG, y: eQ.y * RAD2DEG, z: eQ.z * RAD2DEG})
+
+                      const qq = q.clone()
+                      const qX = new Quaternion()
+                      qX.setFromAxisAngle(vx, (-23.8)*DEG2RAD)
+                      qq.multiply(qX)
+                      const qY = new Quaternion()
+                      // I need to put a XYZ rotation ball to see what's going on
+                      // so blender actually did something interesting to convert the Euler from different coordinate system
+                      // BVH claims it's Zrotation Xrotation Yrotation, but the numbers are not consistent with what blender displays
+                      //         (X     , Y    ,     Z) Euler
+                      // before: (-63.84, 19.76, -4.51) (unknown, raw BVH channel, but for position it's Y up Z front, consistent with blender?)
+                      // after:  (-23.8 , 63.0 , -2.17) (Blender claims it's ZXY Euler, and seems Three.js also recognizes it)
+                      // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/__init__.py
+                      // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/import_bvh.py
+                      qY.setFromAxisAngle(vy, e.y + (-63)*DEG2RAD)
+                      qq.multiply(qY)
+                      const qZ = new Quaternion()
+                      qZ.setFromAxisAngle(vz, e.z + (-2)*DEG2RAD)
+                      qq.multiply(qZ)
+                      const eQ_ = new Euler()
+                      eQ_.setFromQuaternion(qq)
+                      console.info("LeftArmNew", {x: eQ_.x * RAD2DEG, y: eQ_.y * RAD2DEG, z: eQ_.z * RAD2DEG})
+                      q = qq
+                    }
+                  } else {
+                    const qX = new Quaternion()
+                    qX.setFromAxisAngle(vx, e.x)
+                    q.multiply(qX)
+                    const qY = new Quaternion()
+                    qY.setFromAxisAngle(vy, e.y)
+                    q.multiply(qY)
+                    const qZ = new Quaternion()
+                    qZ.setFromAxisAngle(vz, e.z)
+                    q.multiply(qZ)
+                  }
                   values[i * 4] = q.x
                   values[i * 4 + 1] = q.y
                   values[i * 4 + 2] = q.z
@@ -302,7 +336,16 @@ const Scene = () => {
             return clip
           }
           const newClip = setAnimationFromPose(selClip, platformSkeleton)
-          const action = m.clipAction(newClip)
+          const subClip = AnimationUtils.subclip(newClip, "pose", 0, 1)
+          const action = m.clipAction(subClip)
+          const entryName = "LeftArm.quaternion"
+          const kt = subClip.tracks.filter((track) => track.name.includes(entryName))[0]
+          const q = new Quaternion(kt.values[0], kt.values[1], kt.values[2], kt.values[3])
+          const e = new Euler()
+          e.setFromQuaternion(q)
+          // console.info("euler", { x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG })
+          // console.info(kt)
+          // console.info("clip", subClip)
           action.play()
           setMixer(m)
         }
