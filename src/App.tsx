@@ -17,6 +17,9 @@ import {
   Box3,
   Vector3,
   Matrix4,
+  Quaternion,
+  Euler,
+  KeyframeTrack,
 } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
@@ -26,7 +29,7 @@ import { BVHLoader } from "three/addons"
 import "./App.css"
 
 
-const glbfUrl = "/binding.glb"
+const glbfUrl = "/pl_no_s.glb"
 const Ground = () => {
   const gridConfig = {
     cellSize: 0.5,
@@ -105,20 +108,20 @@ const Scene = () => {
 
   // https://github.com/mrdoob/three.js/blob/dev/examples/webgl_loader_bvh.html
   const BvhMesh = () => {
-    const bvhPose = useLoader(BVHLoader, "/171_jump.bvh")
+    const bvhPose = useLoader(BVHLoader, "/plpl.bvh")
     const [stBone, setBone] = useState<Object3D | null>(null)
     const [bvhSkeleton, setBvhSkeleton] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
-  //   const bvhToThreeMatrix = new Matrix4().set(
-	// 1.0, 0.0, 0.0, 0.0,
-	// 0.0, 0.0, 1.0, 0.0,
-	// 0.0, -1.0, 0.0, 0.0,
-	// 0.0, 0.0, 0.0, 1.0
-  //   );
-  // const bvhToThreeMatrix = new Matrix4()
-  // const threeJsAxes = "+X+Y+Z"
-  // const blenderAxes = "+X+Z+Y"
-  // getBasisTransform(blenderAxes, threeJsAxes, bvhToThreeMatrix)
+    //   const bvhToThreeMatrix = new Matrix4().set(
+    // 1.0, 0.0, 0.0, 0.0,
+    // 0.0, 0.0, 1.0, 0.0,
+    // 0.0, -1.0, 0.0, 0.0,
+    // 0.0, 0.0, 0.0, 1.0
+    //   );
+    // const bvhToThreeMatrix = new Matrix4()
+    // const threeJsAxes = "+X+Y+Z"
+    // const blenderAxes = "+X+Z+Y"
+    // getBasisTransform(blenderAxes, threeJsAxes, bvhToThreeMatrix)
 
 
     useFrame((state, delta) => {
@@ -128,41 +131,71 @@ const Scene = () => {
     })
     useEffect(() => {
       if (!bvhSkeleton) {
-        // bvhPose.skeleton.bones.forEach((bone) => {
-        //   bone.applyMatrix4(bvhToThreeMatrix)
-        // })
         const bone = bvhPose.skeleton.bones[0]
         const skeletonHelper = new SkeletonHelper(bone)
         setBvhSkeleton(skeletonHelper)
         setBone(bone)
         console.info("bones", bvhPose)
-        // console.info("conversionMatrix", bvhToThreeMatrix)
-        const rotTracks = bvhPose.clip.tracks.filter((track) => track.name.includes(".quaternion"))
-        // for (const track of rotTracks) {
-        //   for (let i = 0; i < track.values.length; i += 4) {
-        //     const temp = track.values[i];
-        //     track.values[i] = track.values[i + 1];
-        //     track.values[i + 1] = track.values[i + 2];
-        //     track.values[i + 2] = temp;
-        //     track.values[i + 3] = -track.values[i + 3];
-        //   }
-        // }
       }
       if (!mixer) {
         const bone = bvhPose.skeleton.bones[0]
         const bvhMixer = new AnimationMixer(bone)
-        const bvhAction = bvhMixer.clipAction(bvhPose.clip)
-        bvhAction.play()
+        const subClip = AnimationUtils.subclip(bvhPose.clip, "pose", 10, 11)
+        const clip = bvhPose.clip
+        clip.tracks.forEach((track) => {
+          // position for each channel should never change (unless your bone could be lengthened)
+          // but we need to rotate the bone to match the three.js coordinate system
+          if (track.name.includes(".position")) {
+            const values = track.values
+            for (let i = 0; i < values.length; i += 3) {
+              const vec = new Vector3(values[i], values[i + 1], values[i + 2])
+              vec.applyMatrix4(new Matrix4().makeRotationX(-Math.PI / 2))
+              values[i] = vec.x
+              values[i + 1] = vec.y
+              values[i + 2] = vec.z
+            }
+          }
+          if (track.name.includes(".quaternion")) {
+            const values = track.values
+            // don't need to touch rotation
+            // for (let i = 0; i < values.length; i += 4) {
+            //   const quat = new Quaternion(values[i], values[i + 1], values[i + 2], values[i + 3])
+            //   quat.setFromEuler(new Euler(0, 0, 0))
+            //   quat.normalize()
+            //   values[i] = quat.x
+            //   values[i + 1] = quat.y
+            //   values[i + 2] = quat.z
+            //   values[i + 3] = quat.w
+            // }
+          }
+        })
+        const quat = new Quaternion()
+        quat.setFromEuler(new Euler(0, 0, 0))
+        quat.normalize()
+        const action = bvhMixer.clipAction(clip)
+        action.play()
+        console.info("clip", clip)
         setMixer(bvhMixer)
+      }
+      return () => {
+        if (mixer) {
+          mixer.stopAllAction()
+        }
       }
     }, [])
     const BvhHipBone = () => (stBone) ? <primitive object={stBone} /> : null
     const BvhSkeleton = () => (bvhSkeleton) ? <primitive object={bvhSkeleton} /> : null
     const SCALE = 0.15
+    // return (<>
+    // <mesh position={[0, -1, 0]} scale={[SCALE, SCALE, SCALE]}>
+    //   <BvhHipBone />
+    //   <BvhSkeleton />
+    //   </mesh>
+    // </>)
     return (<>
-    <mesh position={[0, -1, 0]} scale={[SCALE, SCALE, SCALE]}>
-      <BvhHipBone />
-      <BvhSkeleton />
+      <mesh position={[0, 0, 0]} scale={[1, 1, 1]}>
+        <BvhHipBone />
+        <BvhSkeleton />
       </mesh>
     </>)
   }
@@ -176,30 +209,110 @@ const Scene = () => {
     const { nodes, scene, materials, animations } = useGLTF(glbfUrl)
     const [helper, setHelper] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
+    const PLATFORM_POSE_URL = "/platform_pose.json"
     // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
     // https://codesandbox.io/p/sandbox/r3f-animation-mixer-8rsdt?
 
     useEffect(() => {
-
-      const model = scene.children[0]
-      if (!helper) {
-        const h = new SkeletonHelper(model)
-        setHelper(h)
-      }
-      if (!mixer) {
-        const m = new AnimationMixer(scene)
-        // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
-        for (const clip of animations) {
-          // for some reason there are still redundant motion data left 
-          // only pick `pose` entries
-          if (clip.name.includes("pose")) {
-            const action = m.clipAction(clip)
-            console.log("clip", clip)
-            // action.play()
-          }
+      const p = new Promise(async (resolve, reject) => {
+        const data = await fetch(PLATFORM_POSE_URL)
+        const platformSkeleton = await data.json()
+        const frameCount = platformSkeleton["Hips"].length // [F 3]
+        const frameRate = 30
+        console.info("platformSkeleton", platformSkeleton)
+        console.info("frameCount", frameCount)
+        const model = scene.children[0]
+        if (!helper) {
+          const h = new SkeletonHelper(model)
+          setHelper(h)
         }
-        setMixer(m)
-      }
+        if (!mixer) {
+          const m = new AnimationMixer(scene)
+          // https://threejs.org/docs/#api/en/animation/AnimationAction.stop
+          for (const clip of animations) {
+            // for some reason there are still redundant motion data left 
+            // only pick `pose` entries
+            if (clip.name.includes("pose")) {
+              // let's create a new clip with only the pose data
+              // for pose data, do nothing, only need to provide
+              console.info("oldClip", clip)
+              // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Float32Array
+              // for position
+              // times: Float32Array [frameCount]
+              // values: Float32Array [frameCount * 3]
+              // for quaternion
+              // times: Float32Array [frameCount]
+              // values: Float32Array [frameCount * 4]
+              const setPose = (track: KeyframeTrack) => {
+                if (track.name.includes(".position")) {
+                  const oldValues = track.values
+                  // just needs to repeat it for each frame
+                  const x = oldValues[3]
+                  const y = oldValues[4]
+                  const z = oldValues[5]
+                  // console.info("position", track.name, { x, y, z })
+                  const values = new Float32Array(frameCount * 3)
+                  for (let i = 0; i < frameCount; i++) {
+                    values[i * 3] = x
+                    values[i * 3 + 1] = y
+                    values[i * 3 + 2] = z
+                  }
+                  const time = new Float32Array(frameCount)
+                  for (let i = 0; i < frameCount; i++) {
+                    time[i] = i / frameRate
+                  }
+                  track.times = time
+                  track.values = values
+                }
+                if (track.name.includes(".quaternion")) {
+                  // it's the T-Pose, 
+                  // we need to rotate it relative to the T-Pose 
+                  // no idea why setting it to (0, 0, 0) would cause the model to be distorted (hands and legs are in the sky!)
+                  const oldValues = track.values
+                  const refQuat = new Quaternion(oldValues[0], oldValues[1], oldValues[2], oldValues[3])
+                  const time = new Float32Array(frameCount)
+                  for (let i = 0; i < frameCount; i++) {
+                    time[i] = i / frameRate
+                  }
+                  // the exported format is Euler in XYZ order
+                  const part = track.name.split(".")[0]
+                  const targetEuler = platformSkeleton[part] // [F 3]
+                  const vx = new Vector3(1, 0, 0)
+                  const vy = new Vector3(0, 1, 0)
+                  const vz = new Vector3(0, 0, 1)
+                  const values = new Float32Array(frameCount * 4)
+                  for (let i = 0; i < frameCount; i++) {
+                    // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
+                    const t = refQuat.clone()
+                    const quatX = new Quaternion()
+                    quatX.setFromAxisAngle(vx, targetEuler[i][0] * DEG2RAD)
+                    t.multiply(quatX)
+                    const quatY = new Quaternion()
+                    quatY.setFromAxisAngle(vy, targetEuler[i][1] * DEG2RAD)
+                    t.multiply(quatY)
+                    const quatZ = new Quaternion()
+                    quatZ.setFromAxisAngle(vz, targetEuler[i][2] * DEG2RAD)
+                    t.multiply(quatZ)
+                    values[i * 4] = t.x
+                    values[i * 4 + 1] = t.y
+                    values[i * 4 + 2] = t.z
+                    values[i * 4 + 3] = t.w
+                  }
+                  track.times = time
+                  track.values = values
+                }
+              }
+              clip.tracks.forEach(setPose)
+              clip.tracks = clip.tracks.filter((track) => !track.name.includes(".scale"))
+              clip.duration = frameCount / frameRate
+              console.info("newClip", clip)
+              const action = m.clipAction(clip)
+              action.play()
+            }
+          }
+          setMixer(m)
+        }
+      })
     }, [])
 
     useFrame((state, delta) => {
@@ -214,7 +327,7 @@ const Scene = () => {
     const Helper = () => (helper) ? <primitive object={helper} /> : null
     return (
       <>
-        <mesh ref={meshRef} position={[0, -0.05, 0]} scale={0.015}>
+        <mesh ref={meshRef} position={[0, -0.05, 0]} scale={1}>
           <Payload />
         </mesh>
         <Helper />
@@ -237,7 +350,7 @@ const Scene = () => {
       <ambientLight intensity={0.25} />
       <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
       <Suspense fallback={null}>
-        <BvhMesh />
+        <MainMesh poseState={poseState} />
       </Suspense>
       <Ground />
       <CameraControls
