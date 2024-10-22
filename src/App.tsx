@@ -28,7 +28,6 @@ import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 're
 import { useControls, button, buttonGroup, folder } from 'leva'
 import { BVHLoader } from "three/addons"
 import "./App.css"
-import { RAD2DEG } from 'three/src/math/MathUtils.js'
 
 
 const glbfUrl = "/pl_no_s.glb"
@@ -47,7 +46,7 @@ const Ground = () => {
   }
   return <Grid position-y={-0.01} args={[10.5, 10.5]} {...gridConfig} />
 }
-const { DEG2RAD } = MathUtils
+const { DEG2RAD, RAD2DEG } = MathUtils
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
 
@@ -216,7 +215,7 @@ const Scene = () => {
     const [helper, setHelper] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
     // const PLATFORM_POSE_URL = "/platform_pose.json"
-    const PLATFORM_POSE_URL = "/platform_pose.json"
+    const PLATFORM_POSE_URL = "/bone_quats.json"
     // https://github.com/mrdoob/three.js/blob/master/src/helpers/SkeletonHelper.js
     // https://codesandbox.io/p/sandbox/r3f-animation-mixer-8rsdt?
 
@@ -264,31 +263,19 @@ const Scene = () => {
                 // no idea why setting it to (0, 0, 0) would cause the model to be distorted 
                 // (hands and legs are in the sky!)
                 const oldValues = track.values
-                const refQuat = new Quaternion(oldValues[0], oldValues[1], oldValues[2], oldValues[3])
+                const refQuat = new Quaternion(oldValues[3], oldValues[0], oldValues[1], oldValues[2])
                 const time = new Float32Array(frameCount)
                 for (let i = 0; i < frameCount; i++) {
                   time[i] = i / frameRate
                 }
                 const part = track.name.split(".")[0]
-                const targetEuler = platformSkeleton[part] // [F 3]
+                const targetQuat = platformSkeleton[part] // [F 3]
                 const values = new Float32Array(frameCount * 4)
                 for (let i = 0; i < frameCount; i++) {
-                  // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
-                  // the exported format is Euler in XYZ order
-                  const e = new Euler(targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD, "ZXY")
+                  const [w, x, y, z] = [targetQuat[i][0], targetQuat[i][1], targetQuat[i][2], targetQuat[i][3]]
+                  const tQ = new Quaternion(x, z, y, w)
                   let q = refQuat.clone()
-                  // I need to put a XYZ rotation ball to see what's going on
-                  // so blender actually did something interesting to convert the Euler from different coordinate system
-                  // BVH claims it's Zrotation Xrotation Yrotation, but the numbers are not consistent with what blender displays
-                  //         (X     , Y    ,     Z) Euler
-                  // before: (-63.84, 19.76, -4.51) (unknown, raw BVH channel, but for position it's Y up Z front, consistent with blender?)
-                  // after:  (-23.8 , 63.0 , -2.17) (Blender claims it's ZXY Euler)
-                  // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/__init__.py
-                  // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/import_bvh.py
-
-                  const qT = new Quaternion()
-                  qT.setFromEuler(e)
-                  q.multiply(qT)
+                  q.multiply(tQ)
                   values[i * 4] = q.x
                   values[i * 4 + 1] = q.y
                   values[i * 4 + 2] = q.z
