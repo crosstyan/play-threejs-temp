@@ -242,16 +242,12 @@ const Scene = () => {
             const setPose = (track: KeyframeTrack) => {
               if (track.name.includes(".position")) {
                 const oldValues = track.values
-                // just needs to repeat it for each frame
-                const x = oldValues[3]
-                const y = oldValues[4]
-                const z = oldValues[5]
-                // console.info("position", track.name, { x, y, z })
+                const vec = new Vector3(oldValues[0], oldValues[1], oldValues[2])
                 const values = new Float32Array(frameCount * 3)
                 for (let i = 0; i < frameCount; i++) {
-                  values[i * 3] = x
-                  values[i * 3 + 1] = y
-                  values[i * 3 + 2] = z
+                  values[i * 3] = vec.x
+                  values[i * 3 + 1] = vec.y
+                  values[i * 3 + 2] = vec.z
                 }
                 const time = new Float32Array(frameCount)
                 for (let i = 0; i < frameCount; i++) {
@@ -271,7 +267,6 @@ const Scene = () => {
                 for (let i = 0; i < frameCount; i++) {
                   time[i] = i / frameRate
                 }
-                // the exported format is Euler in XYZ order
                 const part = track.name.split(".")[0]
                 const targetEuler = platformSkeleton[part] // [F 3]
                 const vx = new Vector3(1, 0, 0)
@@ -280,20 +275,22 @@ const Scene = () => {
                 const values = new Float32Array(frameCount * 4)
                 for (let i = 0; i < frameCount; i++) {
                   // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
-                  const t = refQuat.clone()
-                  const quatX = new Quaternion()
-                  quatX.setFromAxisAngle(vx, targetEuler[i][0] * DEG2RAD)
-                  t.multiply(quatX)
-                  const quatY = new Quaternion()
-                  quatY.setFromAxisAngle(vy, targetEuler[i][1] * DEG2RAD)
-                  t.multiply(quatY)
-                  const quatZ = new Quaternion()
-                  quatZ.setFromAxisAngle(vz, targetEuler[i][2] * DEG2RAD)
-                  t.multiply(quatZ)
-                  values[i * 4] = t.x
-                  values[i * 4 + 1] = t.y
-                  values[i * 4 + 2] = t.z
-                  values[i * 4 + 3] = t.w
+                  // the exported format is Euler in XYZ order
+                  const e = new Euler(targetEuler[i][0] * DEG2RAD, targetEuler[i][1] * DEG2RAD, targetEuler[i][2] * DEG2RAD)
+                  const q = refQuat.clone()
+                  const qX = new Quaternion()
+                  qX.setFromAxisAngle(vx, e.x)
+                  q.multiply(qX)
+                  const qY = new Quaternion()
+                  qY.setFromAxisAngle(vy, e.y)
+                  q.multiply(qY)
+                  const qZ = new Quaternion()
+                  qZ.setFromAxisAngle(vz, e.z)
+                  q.multiply(qZ)
+                  values[i * 4] = q.x
+                  values[i * 4 + 1] = q.y
+                  values[i * 4 + 2] = q.z
+                  values[i * 4 + 3] = q.w
                 }
                 track.times = time
                 track.values = values
