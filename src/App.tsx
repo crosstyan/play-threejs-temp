@@ -21,6 +21,7 @@ import {
   Euler,
   KeyframeTrack,
   AnimationClip,
+  AxesHelper,
 } from "three"
 import { suspend } from "suspend-react"
 import { easing } from "maath"
@@ -28,7 +29,6 @@ import { forwardRef, useEffect, useRef, useState, memo, Suspense, act } from 're
 import { useControls, button, buttonGroup, folder } from 'leva'
 import { BVHLoader } from "three/addons"
 import "./App.css"
-import { RAD2DEG } from 'three/src/math/MathUtils.js'
 
 
 const glbfUrl = "/pl_no_s.glb"
@@ -47,7 +47,7 @@ const Ground = () => {
   }
   return <Grid position-y={-0.01} args={[10.5, 10.5]} {...gridConfig} />
 }
-const { DEG2RAD } = MathUtils
+const { DEG2RAD, RAD2DEG } = MathUtils
 
 type extractRef<T> = T extends React.Ref<infer U> ? U : never
 
@@ -110,10 +110,11 @@ const Scene = () => {
 
   // https://github.com/mrdoob/three.js/blob/dev/examples/webgl_loader_bvh.html
   const BvhMesh = () => {
-    const bvhPose = useLoader(BVHLoader, "/plpl.bvh")
+    const bvhPose = useLoader(BVHLoader, "/platform_pose.bvh")
     const [stBone, setBone] = useState<Object3D | null>(null)
     const [bvhSkeleton, setBvhSkeleton] = useState<SkeletonHelper | null>(null)
     const [mixer, setMixer] = useState<AnimationMixer | null>(null)
+    const meshRef = useRef<Mesh>(null)
     //   const bvhToThreeMatrix = new Matrix4().set(
     // 1.0, 0.0, 0.0, 0.0,
     // 0.0, 0.0, 1.0, 0.0,
@@ -142,7 +143,7 @@ const Scene = () => {
       if (!mixer) {
         const bone = bvhPose.skeleton.bones[0]
         const bvhMixer = new AnimationMixer(bone)
-        const subClip = AnimationUtils.subclip(bvhPose.clip, "pose", 10, 11)
+        const subClip = AnimationUtils.subclip(bvhPose.clip, "pose", 34, 35)
         const clip = bvhPose.clip
         clip.tracks.forEach((track) => {
           // position for each channel should never change (unless your bone could be lengthened)
@@ -151,24 +152,21 @@ const Scene = () => {
             const values = track.values
             for (let i = 0; i < values.length; i += 3) {
               const vec = new Vector3(values[i], values[i + 1], values[i + 2])
-              vec.applyMatrix4(new Matrix4().makeRotationX(-Math.PI / 2))
               values[i] = vec.x
               values[i + 1] = vec.y
               values[i + 2] = vec.z
             }
           }
           if (track.name.includes(".quaternion")) {
-            const values = track.values
             // don't need to touch rotation
-            // for (let i = 0; i < values.length; i += 4) {
-            //   const quat = new Quaternion(values[i], values[i + 1], values[i + 2], values[i + 3])
-            //   quat.setFromEuler(new Euler(0, 0, 0))
-            //   quat.normalize()
-            //   values[i] = quat.x
-            //   values[i + 1] = quat.y
-            //   values[i + 2] = quat.z
-            //   values[i + 3] = quat.w
-            // }
+            const part = track.name.split(".")[0]
+            if (part === "LeftArm") {
+              const t = 34
+              const q = new Quaternion(t * track.values[0], t * track.values[1], t * track.values[2], t * track.values[3])
+              const e = new Euler()
+              e.setFromQuaternion(q, "ZXY")
+              console.info(`LeftArm@${t}`, { x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG })
+            }
           }
         })
         const quat = new Quaternion()
@@ -179,6 +177,7 @@ const Scene = () => {
         console.info("clip", clip)
         setMixer(bvhMixer)
       }
+      meshRef.current?.rotateX(-Math.PI / 4)
       return () => {
         if (mixer) {
           mixer.stopAllAction()
@@ -187,19 +186,19 @@ const Scene = () => {
     }, [])
     const BvhHipBone = () => (stBone) ? <primitive object={stBone} /> : null
     const BvhSkeleton = () => (bvhSkeleton) ? <primitive object={bvhSkeleton} /> : null
-    const SCALE = 0.15
-    // return (<>
-    // <mesh position={[0, -1, 0]} scale={[SCALE, SCALE, SCALE]}>
-    //   <BvhHipBone />
-    //   <BvhSkeleton />
-    //   </mesh>
-    // </>)
+    const SCALE = 1
     return (<>
-      <mesh position={[0, 0, 0]} scale={[1, 1, 1]}>
+      <mesh ref={meshRef} position={[0, 0.5, 0]} scale={[SCALE, SCALE, SCALE]}>
         <BvhHipBone />
         <BvhSkeleton />
       </mesh>
     </>)
+    // return (<>
+    //   <mesh position={[0, 0, 0]} scale={[1, 1, 1]}>
+    //     <BvhHipBone />
+    //     <BvhSkeleton />
+    //   </mesh>
+    // </>)
   }
 
   // bone name as key 
@@ -273,25 +272,55 @@ const Scene = () => {
                 const targetEuler = platformSkeleton[part] // [F 3]
                 const values = new Float32Array(frameCount * 4)
                 for (let i = 0; i < frameCount; i++) {
-                  // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
                   // the exported format is Euler in XYZ
+                  let q = refQuat.clone()
                   const [x, y, z] = [targetEuler[i][0] * DEG2RAD, (targetEuler[i][1]) * DEG2RAD, targetEuler[i][2] * DEG2RAD]
                   const e = new Euler(x, y, z, "ZXY")
                   // https://github.com/mrdoob/three.js/pull/11540/files
-                  let q = refQuat.clone()
                   // I need to put a XYZ rotation ball to see what's going on
                   // so blender actually did something interesting to convert the Euler from different coordinate system
                   // BVH claims it's Zrotation Xrotation Yrotation, but the numbers are not consistent with what blender displays
-                  //         (X     , Y    ,     Z) Euler
-                  // before: (-63.84, 19.76, -4.51) (unknown, raw BVH channel, but for position it's Y up Z front, consistent with blender?)
-                  // after:  (-23.8 , 63.0 , -2.17) (Blender claims it's ZXY Euler)
+                  // Example
+                  // at frame number 34, LeftArm
+                  //             (X      ,   Y   ,      Z)    Euler
+                  // before:     (-56.19 , 30.02 ,   3.39) (unknown, raw BVH channel, but for position it's Y up Z front)
+                  // after:      (-27    , 57.23 ,   1.96) (Blender claims it's ZXY Euler)
+                  // re-target:  (-28.4  , 55.93 ,  -0.87) 
+                  //
+                  // intuition: 
+                  // blender use  right hand cartesian coordinate system (Z up, X front, Y right)
+                  // three.js use right hand cartesian coordinate system (Y up, Z front, X right)
+                  // I'm not sure if Euler is related to the coordinate system
+                  // Channels should not reversed, unless there's a problem in my export code.
+                  //
+                  // On coordinate system
+                  // https://docs.godotengine.org/en/stable/tutorials/3d/introduction_to_3d.html
+                  // Blender import BVH addon
                   // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/__init__.py
                   // https://github.com/blender/blender/blob/c8dd6650dba63db8b3c97335be703be265c508c6/scripts/addons_core/io_anim_bvh/import_bvh.py
-
-                  const qT = new Quaternion()
-                  qT.setFromEuler(e)
-                  qT.normalize()
-                  q.multiply(qT)
+                  // Three.js BVH loader
+                  // https://github.com/mrdoob/three.js/blob/4c36f5f3ce0c6ba2c15ffb15960332af158197f6/examples/jsm/loaders/BVHLoader.js#L177-L190
+                  const blenderVecLA = new Euler(-28.4 * DEG2RAD, 55.93 * DEG2RAD, -0.87 * DEG2RAD, "ZXY")
+                  const tempE = new Euler(-90 * DEG2RAD, 0, -102.69 * DEG2RAD, "ZXY")
+                  const emptyVec = new Euler(0, 0, 0)
+                  if (part === "RightArm") {
+                    const qT = new Quaternion()
+                    qT.setFromEuler(e)
+                    q.multiply(qT)
+                  } else if (part === "LeftArm") {
+                    const qT = new Quaternion()
+                    qT.setFromEuler(tempE)
+                    q.multiply(qT)
+                    if (i === 34) {
+                      const ee = new Euler()
+                      ee.setFromQuaternion(q, "ZXY")
+                      console.info("LeftArm", { x: e.x * RAD2DEG, y: e.y * RAD2DEG, z: e.z * RAD2DEG })
+                    }
+                  } else {
+                    const qT = new Quaternion()
+                    qT.setFromEuler(e)
+                    q.multiply(qT)
+                  }
                   values[i * 4 + 0] = q.x
                   values[i * 4 + 1] = q.y
                   values[i * 4 + 2] = q.z
@@ -307,8 +336,9 @@ const Scene = () => {
             return clip
           }
           const newClip = setAnimationFromPose(selClip, platformSkeleton)
+          const subClip = AnimationUtils.subclip(newClip, "pose", 34, 35)
           // const subClip = AnimationUtils.subclip(newClip, "pose", 0, 1)
-          const action = m.clipAction(newClip)
+          const action = m.clipAction(subClip)
           action.play()
           setMixer(m)
         }
@@ -345,13 +375,16 @@ const Scene = () => {
   }
 
   // https://sbcode.net/react-three-fiber/shadows/
+  // The X axis is red. The Y axis is green. The Z axis is blue.
   return (
     <>
       <ambientLight intensity={0.25} />
       <directionalLight castShadow position={[3.3, 6, 4.4]} intensity={5} />
       <Suspense fallback={null}>
-        <MainMesh poseState={poseState} />
+        {/* <MainMesh poseState={poseState} /> */}
+        <BvhMesh />
       </Suspense>
+      <axesHelper args={[1]} position={[-1, 0, 0]} />
       <Ground />
       <CameraControls
         ref={cameraControlsRef}
